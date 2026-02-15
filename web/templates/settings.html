@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - Crypto Alpha AI Advisor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Crypto Alpha AI Advisor</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">Dashboard</a>
+                <a class="nav-link active" href="/settings">Settings</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h1 class="mb-4">Settings</h1>
+
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Configuration Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="settingsForm">
+                            <!-- Analysis Settings -->
+                            <h6 class="text-primary mb-3">📊 Analysis Settings</h6>
+
+                            <div class="mb-3">
+                                <label for="collectionInterval" class="form-label">Collection Interval (minutes)</label>
+                                <input type="number" class="form-control" id="collectionInterval" min="1" max="1440">
+                                <div class="form-text">How often to collect data from information services</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="minSignalConfidence" class="form-label">Minimum Signal Confidence</label>
+                                <input type="number" class="form-control" id="minSignalConfidence" min="0" max="1" step="0.01">
+                                <div class="form-text">Minimum confidence level for AI signals (0.0 - 1.0)</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="maxSignalsPerDay" class="form-label">Maximum Signals Per Day</label>
+                                <input type="number" class="form-control" id="maxSignalsPerDay" min="1" max="100">
+                                <div class="form-text">Maximum number of signals to generate per day</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="minRiskReward" class="form-label">Minimum Risk/Reward Ratio</label>
+                                <input type="number" class="form-control" id="minRiskReward" min="1" max="10" step="0.1">
+                                <div class="form-text">Minimum risk/reward ratio for signals</div>
+                            </div>
+
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="includeMemecoins">
+                                <label class="form-check-label" for="includeMemecoins">
+                                    Include Memecoins
+                                </label>
+                                <div class="form-text">Whether to include memecoins in analysis</div>
+                            </div>
+
+                            <!-- Data Collection Settings -->
+                            <h6 class="text-success mb-3 mt-4">📈 Data Collection Settings</h6>
+
+                            <div class="mb-3">
+                                <label for="minMarketCap" class="form-label">Minimum Market Cap (USD)</label>
+                                <input type="number" class="form-control" id="minMarketCap" min="0" step="1000">
+                                <div class="form-text">Minimum market capitalization for tokens</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="minTokenPrice" class="form-label">Minimum Token Price (USD)</label>
+                                <input type="number" class="form-control" id="minTokenPrice" min="0" step="0.000001">
+                                <div class="form-text">Minimum price for tokens to be considered</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="minLiquidity" class="form-label">Minimum Liquidity (USD)</label>
+                                <input type="number" class="form-control" id="minLiquidity" min="0" step="100">
+                                <div class="form-text">Minimum liquidity for trading pairs</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="stablecoins" class="form-label">Stablecoins List</label>
+                                <input type="text" class="form-control" id="stablecoins">
+                                <div class="form-text">Comma-separated list of stablecoin symbols</div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="stablecoinMinPrice" class="form-label">Stablecoin Min Price</label>
+                                        <input type="number" class="form-control" id="stablecoinMinPrice" min="0" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="stablecoinMaxPrice" class="form-label">Stablecoin Max Price</label>
+                                        <input type="number" class="form-control" id="stablecoinMaxPrice" min="0" step="0.01">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Trading Settings -->
+                            <h6 class="text-warning mb-3 mt-4">💰 Trading Settings</h6>
+
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="enableAutoTrading">
+                                <label class="form-check-label" for="enableAutoTrading">
+                                    Enable Auto Trading
+                                </label>
+                                <div class="form-text text-danger">⚠️ WARNING: This will enable automatic trading on MEXC!</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="tradeAmount" class="form-label">Trade Amount (USDT)</label>
+                                <input type="number" class="form-control" id="tradeAmount" min="1" step="0.1">
+                                <div class="form-text">Amount in USDT to buy for each signal</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="minTakeProfitPercent" class="form-label">Minimum Take Profit (%)</label>
+                                <input type="number" class="form-control" id="minTakeProfitPercent" min="0.1" step="0.1">
+                                <div class="form-text">Minimum percentage for take profit orders</div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="unsupportedSymbols" class="form-label">Unsupported Symbols</label>
+                                <input type="text" class="form-control" id="unsupportedSymbols">
+                                <div class="form-text">Comma-separated list of symbols to ignore</div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+
+        </div>
+    </div>
+
+    <script>
+        // Load current settings when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSettings();
+        });
+
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(data => {
+                    // Analysis settings
+                    document.getElementById('collectionInterval').value = data.analysis.collection_interval_minutes;
+                    document.getElementById('minSignalConfidence').value = data.analysis.min_signal_confidence;
+                    document.getElementById('maxSignalsPerDay').value = data.analysis.max_signals_per_day;
+                    document.getElementById('minRiskReward').value = data.analysis.min_risk_reward;
+                    document.getElementById('includeMemecoins').checked = data.analysis.include_memecoins;
+
+                    // Data collection settings
+                    document.getElementById('minMarketCap').value = data.data_collection.min_market_cap_usd;
+                    document.getElementById('minTokenPrice').value = data.data_collection.min_token_price_usd;
+                    document.getElementById('minLiquidity').value = data.data_collection.min_liquidity_usd;
+                    document.getElementById('stablecoins').value = data.data_collection.stablecoins;
+                    document.getElementById('stablecoinMinPrice').value = data.data_collection.stablecoin_min_price;
+                    document.getElementById('stablecoinMaxPrice').value = data.data_collection.stablecoin_max_price;
+
+                    // Trading settings
+                    document.getElementById('enableAutoTrading').checked = data.trading.enable_auto_trading;
+                    document.getElementById('tradeAmount').value = data.trading.trade_amount_usdt;
+                    document.getElementById('minTakeProfitPercent').value = data.trading.min_take_profit_percent;
+                    const unsupportedSymbols = data.trading.unsupported_symbols || [];
+                    document.getElementById('unsupportedSymbols').value = Array.isArray(unsupportedSymbols)
+                        ? unsupportedSymbols.join(',')
+                        : unsupportedSymbols;
+                })
+                .catch(error => console.error('Error loading settings:', error));
+        }
+
+        // Handle form submission
+        document.getElementById('settingsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const settings = {
+                analysis: {
+                    collection_interval_minutes: parseInt(document.getElementById('collectionInterval').value),
+                    min_signal_confidence: parseFloat(document.getElementById('minSignalConfidence').value),
+                    max_signals_per_day: parseInt(document.getElementById('maxSignalsPerDay').value),
+                    min_risk_reward: parseFloat(document.getElementById('minRiskReward').value),
+                    include_memecoins: document.getElementById('includeMemecoins').checked
+                },
+                data_collection: {
+                    min_market_cap_usd: parseInt(document.getElementById('minMarketCap').value),
+                    min_token_price_usd: parseFloat(document.getElementById('minTokenPrice').value),
+                    min_liquidity_usd: parseInt(document.getElementById('minLiquidity').value),
+                    stablecoins: document.getElementById('stablecoins').value,
+                    stablecoin_min_price: parseFloat(document.getElementById('stablecoinMinPrice').value),
+                    stablecoin_max_price: parseFloat(document.getElementById('stablecoinMaxPrice').value)
+                },
+                trading: {
+                    enable_auto_trading: document.getElementById('enableAutoTrading').checked,
+                    trade_amount_usdt: parseFloat(document.getElementById('tradeAmount').value),
+                    min_take_profit_percent: parseFloat(document.getElementById('minTakeProfitPercent').value),
+                    unsupported_symbols: document.getElementById('unsupportedSymbols').value
+                        .split(',')
+                        .map(symbol => symbol.trim())
+                        .filter(Boolean)
+                }
+            };
+
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'settings_saved') {
+                    alert('Settings saved successfully!');
+                    // Reload settings to confirm
+                    loadSettings();
+                } else {
+                    alert('Error saving settings: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error saving settings:', error);
+                alert('Error saving settings');
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Alpha AI Advisor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">Crypto Alpha AI Advisor</a>
+            <div class="navbar-nav ms-auto">
+                <a class="nav-link" href="/">Dashboard</a>
+                <a class="nav-link" href="/settings">Settings</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <h1 class="mb-4">Dashboard</h1>
+
+        <!-- Main Navigation Tabs -->
+        <ul class="nav nav-tabs" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="services-tab" data-bs-toggle="tab" data-bs-target="#services" type="button" role="tab">Service Requests History</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="ai-tab" data-bs-toggle="tab" data-bs-target="#ai" type="button" role="tab">AI Analysis Requests History</button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="trading-tab" data-bs-toggle="tab" data-bs-target="#trading" type="button" role="tab">Trading History</button>
+            </li>
+        </ul>
+
+        <div class="tab-content mt-4" id="mainTabContent">
+            <!-- Service Requests History Tab -->
+            <div class="tab-pane fade show active" id="services" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Information Services Requests History</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="nav nav-tabs" id="serviceTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="price-tab" data-bs-toggle="tab" data-bs-target="#price" type="button" role="tab">Price Snapshots</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="trade-tab" data-bs-toggle="tab" data-bs-target="#trade" type="button" role="tab">Trade Activity</button>
+                            </li>
+                        </ul>
+                        <div class="tab-content mt-3" id="serviceTabContent">
+                            <div class="tab-pane fade show active" id="price" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-striped" id="priceTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Token Name</th>
+                                                <th>Price USD</th>
+                                                <th>Liquidity USD</th>
+                                                <th>Volume 24h</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="tab-pane fade" id="trade" role="tabpanel">
+                                <div class="table-responsive">
+                                    <table class="table table-striped" id="tradeTable">
+                                        <thead>
+                                            <tr>
+                                                <th>Time</th>
+                                                <th>Token Name</th>
+                                                <th>Buys 1h</th>
+                                                <th>Sells 1h</th>
+                                                <th>Volume 1h</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AI Analysis Requests History Tab -->
+            <div class="tab-pane fade" id="ai" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>AI Analysis Requests History</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped" id="aiTable">
+                                <thead>
+                                    <tr>
+                                        <th>Generated At</th>
+                                        <th>Asset</th>
+                                        <th>Action</th>
+                                        <th>Entry Min</th>
+                                        <th>Entry Max</th>
+                                        <th>Probability</th>
+                                        <th>Confidence</th>
+                                        <th>Reasoning</th>
+                                        <th>Sent to Telegram</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trading History Tab -->
+            <div class="tab-pane fade" id="trading" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Trading History (MEXC)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped" id="tradingTable">
+                                <thead>
+                                    <tr>
+                                        <th>Opened At</th>
+                                        <th>Symbol</th>
+                                        <th>Side</th>
+                                        <th>Quantity</th>
+                                        <th>Entry Price</th>
+                                        <th>Stop Loss</th>
+                                        <th>Stop Loss %</th>
+                                        <th>Take Profit</th>
+                                        <th>Take Profit %</th>
+                                        <th>Exit Price</th>
+                                        <th>Status</th>
+                                        <th>P&L</th>
+                                        <th>P&L %</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Load data when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            loadServiceRequests();
+            loadAIRequests();
+            loadTradingHistory();
+        });
+
+        function loadServiceRequests() {
+            fetch('/api/service_requests')
+                .then(response => response.json())
+                .then(data => {
+                    // Price snapshots
+                    const priceTable = document.getElementById('priceTable').getElementsByTagName('tbody')[0];
+                    priceTable.innerHTML = '';
+                    data.price_snapshots.forEach(item => {
+                        const row = priceTable.insertRow();
+                        row.insertCell(0).textContent = item.time || 'N/A';
+                        row.insertCell(1).textContent = item.token_name;
+                        row.insertCell(2).textContent = item.price_usd;
+                        row.insertCell(3).textContent = item.liquidity_usd;
+                        row.insertCell(4).textContent = item.volume_24h;
+                    });
+
+                    // Trade activity
+                    const tradeTable = document.getElementById('tradeTable').getElementsByTagName('tbody')[0];
+                    tradeTable.innerHTML = '';
+                    data.trade_activity.forEach(item => {
+                        const row = tradeTable.insertRow();
+                        row.insertCell(0).textContent = item.time || 'N/A';
+                        row.insertCell(1).textContent = item.token_name;
+                        row.insertCell(2).textContent = item.buys_1h || 0;
+                        row.insertCell(3).textContent = item.sells_1h || 0;
+                        row.insertCell(4).textContent = item.volume_1h;
+                    });
+
+
+                })
+                .catch(error => console.error('Error loading service requests:', error));
+        }
+
+        function loadAIRequests() {
+            fetch('/api/ai_requests')
+                .then(response => response.json())
+                .then(data => {
+                    const table = document.getElementById('aiTable').getElementsByTagName('tbody')[0];
+                    table.innerHTML = '';
+                    data.ai_signals.forEach(item => {
+                        const row = table.insertRow();
+                        row.insertCell(0).textContent = item.generated_at;
+                        row.insertCell(1).textContent = item.asset;
+                        row.insertCell(2).textContent = item.action;
+                        row.insertCell(3).textContent = item.entry_min;
+                        row.insertCell(4).textContent = item.entry_max;
+                        row.insertCell(5).textContent = item.probability;
+                        row.insertCell(6).textContent = item.confidence;
+                        row.insertCell(7).textContent = item.reasoning || '-';
+                        row.insertCell(8).textContent = item.sent_to_telegram ? 'Yes' : 'No';
+                    });
+                })
+                .catch(error => console.error('Error loading AI requests:', error));
+        }
+
+        function formatTwoDecimals(value) {
+            if (value === null || value === undefined || value === '' || value === '-') {
+                return '-';
+            }
+            const numberValue = parseFloat(value);
+            if (Number.isNaN(numberValue)) {
+                return value;
+            }
+            return numberValue.toFixed(2);
+        }
+
+        function loadTradingHistory() {
+            fetch('/api/trading_history')
+                .then(response => response.json())
+                .then(data => {
+                    const table = document.getElementById('tradingTable').getElementsByTagName('tbody')[0];
+                    table.innerHTML = '';
+                    data.trading_history.forEach(item => {
+                        const row = table.insertRow();
+                        row.insertCell(0).textContent = item.opened_at || 'N/A';
+                        row.insertCell(1).textContent = item.symbol;
+                        row.insertCell(2).textContent = item.side;
+                        row.insertCell(3).textContent = formatTwoDecimals(item.quantity);
+                        row.insertCell(4).textContent = formatTwoDecimals(item.entry_price);
+                        row.insertCell(5).textContent = formatTwoDecimals(item.stop_loss);
+                        row.insertCell(6).textContent = item.stop_loss_pct ? formatTwoDecimals(item.stop_loss_pct) + '%' : '-';
+                        row.insertCell(7).textContent = formatTwoDecimals(item.take_profit);
+                        row.insertCell(8).textContent = item.take_profit_pct ? formatTwoDecimals(item.take_profit_pct) + '%' : '-';
+                        row.insertCell(9).textContent = item.exit_price ? formatTwoDecimals(item.exit_price) : '-';
+                        row.insertCell(10).textContent = item.status;
+                        row.insertCell(11).textContent = item.pnl ? formatTwoDecimals(item.pnl) : '-';
+                        row.insertCell(12).textContent = item.pnl_percent ? formatTwoDecimals(item.pnl_percent) + '%' : '-';
+
+                        // Color coding for P&L
+                        const pnlCell = row.cells[11];
+                        const pnlPercentCell = row.cells[12];
+                        if (item.pnl && parseFloat(item.pnl) > 0) {
+                            pnlCell.style.color = 'green';
+                            pnlPercentCell.style.color = 'green';
+                        } else if (item.pnl && parseFloat(item.pnl) < 0) {
+                            pnlCell.style.color = 'red';
+                            pnlPercentCell.style.color = 'red';
+                        }
+                    });
+                })
+                .catch(error => console.error('Error loading trading history:', error));
+        }
+
+        // Auto refresh every 30 seconds
+        setInterval(function() {
+            loadServiceRequests();
+            loadAIRequests();
+            loadTradingHistory();
+        }, 30000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+version: '3.8'
+
+# Override for local development
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  web:
+    ports:
+      - "8000:8000"
+    command: tail -f /dev/null  # Keep container running for development

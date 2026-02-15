@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg15
+    container_name: crypto_ai_db
+    environment:
+      POSTGRES_USER: crypto
+      POSTGRES_PASSWORD: crypto_pass
+      POSTGRES_DB: crypto_alpha
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crypto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: crypto_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  worker:
+    build: .
+    container_name: crypto_worker
+    command: celery -A scheduler.tasks worker --loglevel=info --concurrency=2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  beat:
+    build: .
+    container_name: crypto_beat
+    command: celery -A scheduler.tasks beat --loglevel=info --scheduler celery.beat.PersistentScheduler
+    depends_on:
+      - redis
+      - worker
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - .:/app
+      - beat_data:/app/celerybeat
+    restart: unless-stopped
+
+  db_init:
+    build: .
+    container_name: crypto_db_init
+    command: python init_db.py
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+    volumes:
+      - .:/app
+    restart: "no"
+
+  web:
+    build: .
+    container_name: crypto_web
+    command: python run.py
+    depends_on:
+      - db_init
+      - redis
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  deployment_check:
+    build: .
+    container_name: crypto_check
+    command: python check_deployment.py
+    depends_on:
+      - postgres
+      - redis
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=postgres
+    volumes:
+      - .:/app
+    restart: "no"
+
+volumes:
+  postgres_data:
+  redis_data:
+  beat_data:

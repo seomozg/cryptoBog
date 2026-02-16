@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """
-Run background collector with auto-reload on file changes
+Deprecated: background collector runner.
+
+The project now uses Celery beat/worker for scheduling. This script is kept
+for reference only.
 """
 
 import subprocess
@@ -38,6 +41,7 @@ def files_changed(old_times):
     return False
 
 def main():
+    print("⚠️ background_collector is deprecated. Use Celery beat/worker instead.")
     print("🚀 Starting background collector with auto-reload...")
 
     # Get initial file modification times

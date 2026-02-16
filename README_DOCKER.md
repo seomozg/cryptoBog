@@ -44,7 +44,7 @@ docker-compose run --rm deployment_check
 - **worker** - Celery worker для фоновых задач
 - **beat** - Celery beat для периодических задач
 - **db_init** - Инициализация базы данных
-- **web** - Основное приложение (CLI)
+- **web** - веб-интерфейс и API
 
 ### Переменные окружения (.env):
 ```env
@@ -64,6 +64,10 @@ CRYPTOPANIC_API_KEY=your-news-key
 
 ## 📊 Использование
 
+### Автоматический режим (Celery):
+- **Сбор данных** и полный цикл выполняются по интервалу из `analysis.collection_interval_minutes`.
+- Планировщик запускается через Celery beat и worker.
+
 ### Ручное управление:
 ```bash
 # Войти в контейнер
@@ -73,14 +77,8 @@ docker-compose exec web bash
 python run.py init-db          # Инициализация БД
 python run.py collect --limit 10  # Сбор данных
 python run.py analyze          # AI анализ
-python run.py send             # Отправка сигналов
 python run.py full-cycle       # Полный цикл
 ```
-
-### Автоматический режим:
-- **Сбор данных**: каждые 30 минут
-- **Полный анализ**: каждый час
-- **Отправка сигналов**: автоматически после анализа
 
 ## 🔧 Управление
 
@@ -154,9 +152,10 @@ services:
 
 ### Настройка периодичности:
 ```python
-# В scheduler/tasks.py
-sender.add_periodic_task(900.0, collect_data_task.s(), name='collect-data')  # 15 мин
-sender.add_periodic_task(1800.0, full_cycle_task.s(), name='full-cycle')   # 30 мин
+# В scheduler/tasks.py (используется значение из settings.json)
+collection_interval_seconds = max(60, int(config.COLLECTION_INTERVAL_MINUTES) * 60)
+sender.add_periodic_task(collection_interval_seconds, collect_data_task.s(), name='collect-data')
+sender.add_periodic_task(collection_interval_seconds, full_cycle_task.s(), name='full-cycle')
 ```
 
 ## 🔒 Безопасность

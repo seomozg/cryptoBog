@@ -12,6 +12,7 @@ env.bak/
 venv.bak/
 *.sqlite
 *.db
+*.db-journal
 celerybeat-schedule
 celery_results/
 celery_data/

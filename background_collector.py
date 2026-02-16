@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Background data collector for the web interface
-Runs periodic data collection tasks
+Deprecated: background data collector
+
+The project now uses Celery beat/worker for scheduling. This module is kept
+for reference only and should not be used in production.
 """
 
 import logging
@@ -232,6 +234,7 @@ class BackgroundCollector:
 
 def main():
     """Main function to run the background collector"""
+    logger.warning("background_collector is deprecated. Use Celery beat/worker instead.")
     collector = BackgroundCollector()
 
     try:

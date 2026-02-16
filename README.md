@@ -29,9 +29,13 @@ python run.py
 После запуска веб-интерфейс доступен на:
 `http://127.0.0.1:5000/`
 
-Фоновый сборщик:
+Планировщик (Celery):
 ```bash
-python run_background.py
+# В одном терминале
+celery -A scheduler.tasks worker --loglevel=info
+
+# Во втором терминале
+celery -A scheduler.tasks beat --loglevel=info
 ```
 
 ---
@@ -64,6 +68,8 @@ python run_background.py
   }
 }
 ```
+
+Интервал сбора данных берётся из `analysis.collection_interval_minutes`.
 
 Веб-страница для настроек:
 `http://127.0.0.1:5000/settings`

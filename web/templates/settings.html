@@ -56,6 +56,12 @@
                                 <div class="form-text">Minimum risk/reward ratio for signals</div>
                             </div>
 
+                            <div class="mb-3">
+                                <label for="serviceTimezone" class="form-label">Service Timezone</label>
+                                <input type="text" class="form-control" id="serviceTimezone" placeholder="GMT+7">
+                                <div class="form-text">Timezone for displaying dates (e.g., GMT+7)</div>
+                            </div>
+
                             <div class="mb-3 form-check">
                                 <input type="checkbox" class="form-check-input" id="includeMemecoins">
                                 <label class="form-check-label" for="includeMemecoins">
@@ -161,6 +167,7 @@
                     document.getElementById('maxSignalsPerDay').value = data.analysis.max_signals_per_day;
                     document.getElementById('minRiskReward').value = data.analysis.min_risk_reward;
                     document.getElementById('includeMemecoins').checked = data.analysis.include_memecoins;
+                    document.getElementById('serviceTimezone').value = data.analysis.timezone || 'GMT+7';
 
                     // Data collection settings
                     document.getElementById('minMarketCap').value = data.data_collection.min_market_cap_usd;
@@ -192,7 +199,8 @@
                     min_signal_confidence: parseFloat(document.getElementById('minSignalConfidence').value),
                     max_signals_per_day: parseInt(document.getElementById('maxSignalsPerDay').value),
                     min_risk_reward: parseFloat(document.getElementById('minRiskReward').value),
-                    include_memecoins: document.getElementById('includeMemecoins').checked
+                    include_memecoins: document.getElementById('includeMemecoins').checked,
+                    timezone: document.getElementById('serviceTimezone').value
                 },
                 data_collection: {
                     min_market_cap_usd: parseInt(document.getElementById('minMarketCap').value),

@@ -1,10 +1,12 @@
 import requests
 import logging
+import time
 from datetime import datetime
 from typing import List, Dict, Any
 from database.db_manager import db_manager
 from database.models import TokenMetadata, PriceSnapshot, TradeActivity
 from config.settings import Config
+from trading.mexc_client import MEXCClient
 
 logger = logging.getLogger(__name__)
 
@@ -17,91 +19,38 @@ class DexPaprikaCollector:
         self.session = requests.Session()
         self.config = Config()
 
-    def get_trending_tokens(self, network: str = "ethereum", limit: int = 100) -> List[Dict]:
-        """Get major tokens by searching for well-known symbols"""
+    def get_latest_token_profiles(self) -> List[Dict[str, Any]]:
+        """Get latest token profiles from DexScreener."""
         try:
-            # Search for major tokens instead of "trending"
-            major_tokens = [
-                "ETH", "BTC", "SOL", "MATIC", "AVAX", "LINK", "UNI", "AAVE",
-                "USDC", "USDT", "WBTC", "WETH", "BNB", "ADA", "DOT", "LTC",
-                "ALGO", "VET", "ICP", "FIL", "TRX", "ETC", "XLM", "THETA",
-                "FTM", "HBAR", "NEAR", "FLOW", "MANA", "SAND", "AXS", "ENJ"
-            ]
-
-            all_tokens = []
-            seen_addresses = set()
-
-            for symbol in major_tokens:
-                try:
-                    url = f"{self.BASE_URL}/latest/dex/search"
-                    params = {"q": symbol, "chainId": network, "limit": 10}
-                    response = self.session.get(url, params=params)
-                    response.raise_for_status()
-                    data = response.json()
-
-                    for pair in data.get("pairs", [])[:3]:  # Take first 3 pairs per symbol
-                        base_token = pair.get("baseToken", {})
-                        token_address = base_token.get("address", "")
-
-                        # Skip if already processed this token
-                        if token_address in seen_addresses:
-                            continue
-                        seen_addresses.add(token_address)
-
-                        # Skip if no data
-                        if not token_address or not base_token.get("symbol"):
-                            continue
-
-                        # Get market cap
-                        market_cap = pair.get("marketCap", 0) or pair.get("fdv", 0) or 0
-
-                        price_usd = float(pair.get("priceUsd", 0) or 0)
-
-                        # Skip stablecoins with wrong prices
-                        if symbol in self.config.STABLECOINS and (price_usd < self.config.STABLECOIN_MIN_PRICE or price_usd > self.config.STABLECOIN_MAX_PRICE):
-                            continue
-
-                        # Skip tokens with extremely low prices
-                        if price_usd < self.config.MIN_TOKEN_PRICE_USD:
-                            continue
-
-                        token_data = {
-                            "token_address": token_address,
-                            "symbol": symbol,
-                            "name": base_token.get("name", ""),
-                            "price_usd": price_usd,
-                            "liquidity_usd": pair.get("liquidity", {}).get("usd", 0),
-                            "volume_24h": pair.get("volume", {}).get("h24", 0),
-                            "buys_24h": pair.get("txns", {}).get("h24", {}).get("buys", 0),
-                            "sells_24h": pair.get("txns", {}).get("h24", {}).get("sells", 0),
-                            "buys_1h": pair.get("txns", {}).get("h1", {}).get("buys", 0),
-                            "sells_1h": pair.get("txns", {}).get("h1", {}).get("sells", 0),
-                            "txns_24h": pair.get("txns", {}).get("h24", {}).get("buys", 0) + pair.get("txns", {}).get("h24", {}).get("sells", 0),
-                            "txns_1h": pair.get("txns", {}).get("h1", {}).get("buys", 0) + pair.get("txns", {}).get("h1", {}).get("sells", 0),
-                            "volume_1h": pair.get("volume", {}).get("h1", 0),
-                            "market_cap_usd": market_cap,
-                            "fdv_usd": pair.get("fdv", 0)
-                        }
-
-                        all_tokens.append(token_data)
-
-                        # Stop when we have enough tokens
-                        if len(all_tokens) >= limit:
-                            break
-
-                    if len(all_tokens) >= limit:
-                        break
-
-                except Exception as e:
-                    logger.warning(f"Failed to search for {symbol}: {e}")
-                    continue
-
-            logger.info(f"Collected {len(all_tokens)} major tokens from DexScreener")
-            return all_tokens
-
-        except requests.RequestException as e:
-            logger.error(f"Failed to get trending tokens: {e}")
+            url = f"{self.BASE_URL}/token-profiles/latest/v1"
+            response = self.session.get(url)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, list):
+                return data
             return []
+        except requests.RequestException as e:
+            logger.error(f"Failed to get latest token profiles: {e}")
+            return []
+
+    def get_token_pairs(self, chain_id: str, token_address: str) -> List[Dict[str, Any]]:
+        """Get pools for a token address."""
+        try:
+            url = f"{self.BASE_URL}/token-pairs/v1/{chain_id}/{token_address}"
+            response = self.session.get(url)
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, list):
+                return data
+            return []
+        except requests.RequestException as e:
+            logger.error(f"Failed to get token pairs for {token_address}: {e}")
+            return []
+
+    def _select_best_pair(self, pairs: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not pairs:
+            return {}
+        return max(pairs, key=lambda pair: pair.get("liquidity", {}).get("usd", 0) or 0)
 
     def get_token_details(self, network: str, token_address: str) -> Dict:
         """Get detailed token information"""
@@ -114,81 +63,87 @@ class DexPaprikaCollector:
             logger.error(f"Failed to get token details for {token_address}: {e}")
             return {}
 
-    def collect_for_analysis(self, network: str = "ethereum", limit: int = 30) -> List[Dict[str, Any]]:
+    def collect_for_analysis(self, network: str = "ethereum", limit: int | None = None, persist: bool = True) -> List[Dict[str, Any]]:
         """
         Collect data for analysis from DexScreener
         Returns list of token data with metrics
         """
         collected_data = []
-        trending_tokens = self.get_trending_tokens(network, limit * 3)  # Get more to filter
+        seen_addresses = set()
 
-        if not trending_tokens:
-            logger.error("Failed to collect trending tokens from API - no data available")
+        mexc_client = MEXCClient()
+        mexc_symbols = mexc_client.get_exchange_symbols("USDT")
+        base_symbols = [s.get("baseAsset") for s in (mexc_symbols or []) if s.get("baseAsset")]
+
+        if not base_symbols:
+            logger.error("Failed to collect MEXC symbols - no data available")
             return []
 
-        logger.info(f"Retrieved {len(trending_tokens)} tokens from API, filtering for valid data...")
+        logger.info(f"Retrieved {len(base_symbols)} MEXC base symbols, searching DexScreener...")
 
-        for token_info in trending_tokens:
-            token_address = token_info.get('token_address')
+        for symbol in base_symbols:
+            if len(symbol) < 2:
+                continue
+            try:
+                search_url = f"{self.BASE_URL}/latest/dex/search"
+                response = self.session.get(search_url, params={"q": symbol, "chainId": network}, timeout=10)
+                response.raise_for_status()
+                search_data = response.json()
+            except requests.RequestException as e:
+                logger.warning(f"Failed to search DexScreener for {symbol}: {e}")
+                continue
+
+            pairs = search_data.get("pairs", []) if isinstance(search_data, dict) else []
+            if not pairs:
+                continue
+
+            best_pair = self._select_best_pair(pairs)
+            if not best_pair:
+                continue
+
+            token_address = best_pair.get('baseToken', {}).get('address')
             if not token_address:
                 continue
-
-            # Validate data - skip tokens with invalid prices
-            price_usd = token_info.get('price_usd', 0)
-            symbol = token_info.get('symbol', '').upper()
-
-            # Skip known stablecoins with wrong prices
-            if symbol in self.config.STABLECOINS and (price_usd < self.config.STABLECOIN_MIN_PRICE or price_usd > self.config.STABLECOIN_MAX_PRICE):
-                logger.debug(f"Skipping {symbol} - invalid stablecoin price: {price_usd}")
+            if token_address in seen_addresses:
                 continue
 
-            # Skip tokens with extremely low prices (likely micro-cap or scam tokens)
+            base_token = best_pair.get('baseToken', {})
+            price_usd = float(best_pair.get('priceUsd', 0) or 0)
+            liquidity_usd = best_pair.get('liquidity', {}).get('usd', 0) or 0
+
             if price_usd < self.config.MIN_TOKEN_PRICE_USD:
-                logger.debug(f"Skipping {symbol} - price too low: {price_usd}")
+                continue
+            if liquidity_usd < self.config.MIN_LIQUIDITY_USD:
                 continue
 
-            # Skip tokens with no price or invalid price
-            if not price_usd or price_usd <= 0:
-                logger.debug(f"Skipping {symbol} - invalid price: {price_usd}")
-                continue
-
-            # Skip tokens with no liquidity
-            liquidity_usd = token_info.get('liquidity_usd', 0)
-            if not liquidity_usd or liquidity_usd < self.config.MIN_LIQUIDITY_USD:
-                logger.debug(f"Skipping {symbol} - low liquidity: {liquidity_usd}")
-                continue
-
-            # Log valid token data
-            logger.info(f"✓ Valid token: {token_info.get('symbol', 'UNKNOWN')} - Price: ${price_usd:.6f}, Liquidity: ${liquidity_usd:,.0f}")
-
-            # Use data directly from trending tokens
             data = {
                 'network': network,
                 'token_address': token_address,
-                'symbol': token_info.get('symbol', ''),
-                'name': token_info.get('name', ''),
+                'symbol': base_token.get('symbol', '').upper(),
+                'name': base_token.get('name', ''),
                 'price_usd': price_usd,
                 'liquidity_usd': liquidity_usd,
-                'volume_24h': token_info.get('volume_24h', 0),
-                'fdv_usd': token_info.get('fdv_usd', 0),
-                'market_cap_usd': token_info.get('market_cap_usd', 0),
-                'buys_1h': token_info.get('buys_1h', 0),
-                'sells_1h': token_info.get('sells_1h', 0),
-                'buys_24h': token_info.get('buys_24h', 0),
-                'sells_24h': token_info.get('sells_24h', 0),
-                'txns_1h': token_info.get('txns_1h', 0),
-                'txns_24h': token_info.get('txns_24h', 0),
-                'volume_1h': token_info.get('volume_1h', 0)
+                'volume_24h': best_pair.get('volume', {}).get('h24', 0),
+                'fdv_usd': best_pair.get('fdv', 0),
+                'market_cap_usd': best_pair.get('marketCap', 0),
+                'buys_1h': best_pair.get('txns', {}).get('h1', {}).get('buys', 0),
+                'sells_1h': best_pair.get('txns', {}).get('h1', {}).get('sells', 0),
+                'buys_24h': best_pair.get('txns', {}).get('h24', {}).get('buys', 0),
+                'sells_24h': best_pair.get('txns', {}).get('h24', {}).get('sells', 0),
+                'txns_1h': best_pair.get('txns', {}).get('h1', {}).get('buys', 0) + best_pair.get('txns', {}).get('h1', {}).get('sells', 0),
+                'txns_24h': best_pair.get('txns', {}).get('h24', {}).get('buys', 0) + best_pair.get('txns', {}).get('h24', {}).get('sells', 0),
+                'volume_1h': best_pair.get('volume', {}).get('h1', 0)
             }
 
+            seen_addresses.add(token_address)
             collected_data.append(data)
+            if persist:
+                self._save_to_database(data)
 
-            # Save to database
-            self._save_to_database(data)
-
-            # Stop when we have enough valid tokens
-            if len(collected_data) >= limit:
+            if limit and len(collected_data) >= limit:
                 break
+
+            time.sleep(0.15)
 
         if len(collected_data) == 0:
             logger.error("No valid tokens found after filtering - check API response or network connectivity")

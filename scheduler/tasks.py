@@ -36,6 +36,9 @@ def collect_data_task(network: str = "ethereum", limit: int = 100):
     try:
         logger.info(f"Starting data collection for {network}")
 
+        if db_manager.SessionLocal is None:
+            db_manager.init_db()
+
         # Collect market data
         collector = DexPaprikaCollector()
         market_data = collector.collect_for_analysis(network, limit)
@@ -59,6 +62,9 @@ def analyze_data_task(collected_data: dict):
     """
     try:
         logger.info("Starting AI analysis")
+
+        if db_manager.SessionLocal is None:
+            db_manager.init_db()
 
         market_data = collected_data.get('market_data', [])
         news_summary = collected_data.get('news_summary', '')
@@ -90,6 +96,7 @@ def analyze_data_task(collected_data: dict):
 
         # Analyze with AI
         analyzer = DeepSeekAnalyzer()
+        logger.info(f"Sending {len(allowed_market_data)} tokens to DeepSeek in batches")
         analysis_result = analyzer.analyze_market_data(allowed_market_data, news_summary)
 
         logger.info(f"AI analysis complete. Market phase: {analysis_result.get('market_phase', 'unknown')}")
@@ -107,6 +114,9 @@ def process_signals_task(analysis_result: dict):
     """
     try:
         logger.info("Processing signals")
+
+        if db_manager.SessionLocal is None:
+            db_manager.init_db()
 
         raw_signals = analysis_result.get('signals', [])
         market_phase = analysis_result.get('market_phase', 'unknown')
@@ -131,6 +141,9 @@ def execute_trades_task():
     """
     try:
         logger.info("Executing automated trades for signals")
+
+        if db_manager.SessionLocal is None:
+            db_manager.init_db()
 
         signal_generator = SignalGenerator()
         sendable_signals = signal_generator.get_sendable_signals()
@@ -164,6 +177,8 @@ def check_sells_task(collected_data: dict):
     Check open positions and execute sells based on latest prices
     """
     try:
+        if db_manager.SessionLocal is None:
+            db_manager.init_db()
         market_data = collected_data.get('market_data', [])
         current_prices = {token.get('symbol', ''): token.get('price_usd', 0) for token in market_data}
         trade_manager = TradeManager()

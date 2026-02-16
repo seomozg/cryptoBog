@@ -154,12 +154,59 @@
     </div>
 
     <script>
+        let serviceTimezone = 'GMT+7';
+
         // Load data when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            loadServiceRequests();
-            loadAIRequests();
-            loadTradingHistory();
+            loadSettings();
         });
+
+        function loadSettings() {
+            fetch('/api/settings')
+                .then(response => response.json())
+                .then(data => {
+                    serviceTimezone = data.analysis?.timezone || 'GMT+7';
+                    loadServiceRequests();
+                    loadAIRequests();
+                    loadTradingHistory();
+                })
+                .catch(() => {
+                    loadServiceRequests();
+                    loadAIRequests();
+                    loadTradingHistory();
+                });
+        }
+
+        function parseTimezoneOffset(value) {
+            const match = /^GMT([+-]\d{1,2})$/.exec(value);
+            if (!match) {
+                return 0;
+            }
+            return parseInt(match[1], 10);
+        }
+
+        function formatDateTime(value) {
+            if (!value) {
+                return 'N/A';
+            }
+
+            const parsed = new Date(value);
+            if (Number.isNaN(parsed.getTime())) {
+                return value;
+            }
+
+            const offsetHours = parseTimezoneOffset(serviceTimezone);
+            const adjusted = new Date(parsed.getTime() + offsetHours * 60 * 60 * 1000);
+
+            return adjusted.toLocaleString('en-GB', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
 
         function loadServiceRequests() {
             fetch('/api/service_requests')
@@ -170,7 +217,7 @@
                     priceTable.innerHTML = '';
                     data.price_snapshots.forEach(item => {
                         const row = priceTable.insertRow();
-                        row.insertCell(0).textContent = item.time || 'N/A';
+                        row.insertCell(0).textContent = formatDateTime(item.time);
                         row.insertCell(1).textContent = item.token_name;
                         row.insertCell(2).textContent = item.price_usd;
                         row.insertCell(3).textContent = item.liquidity_usd;
@@ -182,7 +229,7 @@
                     tradeTable.innerHTML = '';
                     data.trade_activity.forEach(item => {
                         const row = tradeTable.insertRow();
-                        row.insertCell(0).textContent = item.time || 'N/A';
+                        row.insertCell(0).textContent = formatDateTime(item.time);
                         row.insertCell(1).textContent = item.token_name;
                         row.insertCell(2).textContent = item.buys_1h || 0;
                         row.insertCell(3).textContent = item.sells_1h || 0;
@@ -202,7 +249,7 @@
                     table.innerHTML = '';
                     data.ai_signals.forEach(item => {
                         const row = table.insertRow();
-                        row.insertCell(0).textContent = item.generated_at;
+                        row.insertCell(0).textContent = formatDateTime(item.generated_at);
                         row.insertCell(1).textContent = item.asset;
                         row.insertCell(2).textContent = item.action;
                         row.insertCell(3).textContent = item.entry_min;
@@ -235,7 +282,7 @@
                     table.innerHTML = '';
                     data.trading_history.forEach(item => {
                         const row = table.insertRow();
-                        row.insertCell(0).textContent = item.opened_at || 'N/A';
+                        row.insertCell(0).textContent = formatDateTime(item.opened_at);
                         row.insertCell(1).textContent = item.symbol;
                         row.insertCell(2).textContent = item.side;
                         row.insertCell(3).textContent = formatTwoDecimals(item.quantity);

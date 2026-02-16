@@ -111,6 +111,16 @@ class MEXCClient:
             logger.error(f"Failed to get symbol info for {symbol}: {e}")
         return {}
 
+    def get_exchange_symbols(self, quote_asset: str = "USDT") -> List[Dict]:
+        """Get all trading symbols from exchange info."""
+        try:
+            data = self._make_request('GET', '/api/v3/exchangeInfo')
+            symbols = data.get('symbols', []) if isinstance(data, dict) else []
+            return [s for s in symbols if s.get('quoteAsset') == quote_asset]
+        except Exception as e:
+            logger.error(f"Failed to get exchange symbols: {e}")
+            return []
+
     def place_buy_order(self, symbol: str, amount_usdt: float) -> Dict:
         """Place market buy order for specified USDT amount"""
         try:

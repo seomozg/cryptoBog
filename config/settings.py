@@ -55,6 +55,10 @@ class Config:
     def MIN_RISK_REWARD(self):
         return user_settings.get('analysis', {}).get('min_risk_reward', 1.5)
 
+    @property
+    def TIMEZONE(self):
+        return user_settings.get('analysis', {}).get('timezone', 'GMT+7')
+
     # Data collection settings (from user_settings.json)
     @property
     def MIN_MARKET_CAP_USD(self):

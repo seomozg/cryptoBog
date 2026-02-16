@@ -28,8 +28,8 @@ class DeepSeekAnalyzer:
 
 Your task: based on provided on-chain data, trading activity, and news:
 1. Determine the current market phase (early bull, late bull, bear, consolidation)
-2. Identify top 3 most promising assets for BUY ON DIP (not on highs!)
-3. For each asset provide:
+2. Identify ALL promising assets for BUY ON DIP from the provided dataset (not on highs!)
+3. For each selected asset provide:
    - Specific entry price range (min-max)
    - Stop-loss (in $ and %)
    - Take-profit (in $ and %)
@@ -43,15 +43,22 @@ IMPORTANT: You NEVER suggest buying at current highs. You specify DIP entry pric
 REASONING MUST BE IN RUSSIAN. All other fields remain in English.
 Format response as strict JSON."""
 
-        user_prompt = f"""
+        try:
+            batch_size = 150
+            signals: List[Dict[str, Any]] = []
+            market_phase = "unknown"
+
+            for batch_start in range(0, len(market_data), batch_size):
+                batch = market_data[batch_start:batch_start + batch_size]
+                user_prompt = f"""
 === MARKET DATA ===
-{json.dumps(market_data[:20], indent=2, default=str)[:3000]}...(truncated)
+{json.dumps(batch, indent=2, default=str)[:9000]}...(truncated)
 
 === NEWS SUMMARY ===
 {news_summary}
 
 === REQUEST ===
-Return JSON in format:
+Return JSON in format (include all qualifying assets from the input):
 {{
   "market_phase": "bull/bear/consolidation",
   "signals": [
@@ -72,29 +79,35 @@ Return JSON in format:
 }}
 """
 
-        try:
-            response = requests.post(
-                f"{self.api_base}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "model": self.model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    "temperature": 0.3,
-                    "response_format": {"type": "json_object"}
-                },
-                timeout=30
-            )
+                response = requests.post(
+                    f"{self.api_base}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json={
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        "temperature": 0.3,
+                        "response_format": {"type": "json_object"}
+                    },
+                    timeout=30
+                )
 
-            response.raise_for_status()
-            result = response.json()
-            content = result["choices"][0]["message"]["content"]
-            return json.loads(content)
+                response.raise_for_status()
+                result = response.json()
+                content = result["choices"][0]["message"]["content"]
+                batch_result = json.loads(content)
+                market_phase = batch_result.get("market_phase", market_phase)
+                signals.extend(batch_result.get("signals", []))
+
+            return {
+                "market_phase": market_phase,
+                "signals": signals
+            }
 
         except Exception as e:
             logger.error(f"DeepSeek API error: {e}")

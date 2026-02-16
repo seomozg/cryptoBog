@@ -11,7 +11,7 @@ class TokenMetadata(Base):
 
     id = Column(Integer, primary_key=True)
     network = Column(String(50), nullable=False)
-    token_address = Column(String(100), nullable=False)
+    token_address = Column(String(255), nullable=False)
     symbol = Column(String(50))
     name = Column(String(255))
     first_seen = Column(TIMESTAMP, default=func.now())

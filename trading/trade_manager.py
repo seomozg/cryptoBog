@@ -24,6 +24,12 @@ class TradeManager:
     def _get_telegram_bot(self):
         """Lazy initialization of Telegram bot"""
         if self.telegram_bot is None:
+            import sys
+            import os
+            # Add parent directory to path to import local telegram module
+            parent_dir = os.path.dirname(os.path.dirname(__file__))
+            if parent_dir not in sys.path:
+                sys.path.insert(0, parent_dir)
             from telegram.bot import TelegramBot
             self.telegram_bot = TelegramBot()
         return self.telegram_bot

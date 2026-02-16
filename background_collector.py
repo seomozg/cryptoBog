@@ -13,6 +13,12 @@ from datetime import datetime, timedelta
 from collectors.dex_paprika import DexPaprikaCollector
 from analyzers.ai_adapter import DeepSeekAnalyzer
 from analyzers.signal_generator import SignalGenerator
+import sys
+import os
+# Add current directory to path to import local telegram module
+current_dir = os.path.dirname(__file__)
+if current_dir not in sys.path:
+    sys.path.insert(0, current_dir)
 from telegram.bot import TelegramBot
 from trading.trade_manager import TradeManager
 from database.db_manager import db_manager

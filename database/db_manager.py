@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 import logging
+import os
 
 from .models import Base
 from config.settings import Config
@@ -17,7 +18,17 @@ class DatabaseManager:
     def init_db(self):
         """Initialize database connection and create tables"""
         try:
-            self.engine = create_engine(self.config.DATABASE_URL)
+            # Try to get DATABASE_URL from environment first
+            db_url = os.getenv('DATABASE_URL')
+            if not db_url:
+                # Hardcode for worker container
+                if os.path.exists('/app'):
+                    db_url = 'postgresql://crypto:crypto_pass@postgres:5432/crypto'
+                else:
+                    # Fall back to config
+                    db_url = self.config.DATABASE_URL
+            print(f"DEBUG: Using DATABASE_URL: {db_url}")
+            self.engine = create_engine(db_url)
 
             # Create tables
             Base.metadata.create_all(bind=self.engine)

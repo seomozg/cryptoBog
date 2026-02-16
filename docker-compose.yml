@@ -7,14 +7,14 @@ services:
     environment:
       POSTGRES_USER: crypto
       POSTGRES_PASSWORD: crypto_pass
-      POSTGRES_DB: crypto_alpha
+      POSTGRES_DB: crypto
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U crypto"]
+      test: ["CMD-SHELL", "pg_isready -U crypto -d crypto"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -38,11 +38,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    env_file:
-      - .env
     environment:
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      TEST_VAR: test_value
+      DATABASE_URL: postgresql://crypto:crypto_pass@postgres:5432/crypto
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/0
     volumes:
       - .:/app
     restart: unless-stopped

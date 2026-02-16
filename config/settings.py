@@ -16,13 +16,6 @@ if os.path.exists(USER_SETTINGS_FILE):
         user_settings = {}
 
 class Config:
-    # Database
-    DB_HOST = os.getenv('DB_HOST', 'localhost')
-    DB_PORT = int(os.getenv('DB_PORT', 5432))
-    DB_NAME = os.getenv('DB_NAME', 'crypto_alpha')
-    DB_USER = os.getenv('DB_USER', 'crypto')
-    DB_PASS = os.getenv('DB_PASS', 'crypto_pass')
-
     # For production, use PostgreSQL
     USE_SQLITE = os.getenv('USE_SQLITE', 'false').lower() == 'true'
 
@@ -127,7 +120,32 @@ class Config:
     MEXC_BASE_URL = os.getenv('MEXC_BASE_URL', 'https://api.mexc.com')
 
     @property
+    def DB_HOST(self):
+        return os.getenv('DB_HOST', 'localhost')
+
+    @property
+    def DB_PORT(self):
+        return int(os.getenv('DB_PORT', 5432))
+
+    @property
+    def DB_NAME(self):
+        return os.getenv('DB_NAME', 'crypto_alpha')
+
+    @property
+    def DB_USER(self):
+        return os.getenv('DB_USER', 'crypto')
+
+    @property
+    def DB_PASS(self):
+        return os.getenv('DB_PASS', 'crypto_pass')
+
+    @property
     def DATABASE_URL(self):
+        # Check if DATABASE_URL is explicitly set
+        explicit_url = os.getenv('DATABASE_URL')
+        if explicit_url:
+            return explicit_url
+
         # For development/testing, use SQLite if configured
         if self.USE_SQLITE:
             return "sqlite:///crypto_alpha.db"

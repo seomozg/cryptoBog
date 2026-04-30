@@ -94,10 +94,21 @@ def analyze_data_task(collected_data: dict):
                 'signals': []
             }
 
+        # Предварительная фильтрация заблокированных токенов (с плохой историей сделок)
+        signal_generator = SignalGenerator()
+        filtered_market_data = signal_generator.filter_blocked_tokens(allowed_market_data)
+        
+        if not filtered_market_data:
+            logger.info("Все токены заблокированы (плохая история сделок), анализ DeepSeek не выполняется")
+            return {
+                'market_phase': 'unknown',
+                'signals': []
+            }
+
         # Analyze with AI
         analyzer = DeepSeekAnalyzer()
-        logger.info(f"Sending {len(allowed_market_data)} tokens to DeepSeek in batches")
-        analysis_result = analyzer.analyze_market_data(allowed_market_data, news_summary)
+        logger.info(f"Sending {len(filtered_market_data)} tokens to DeepSeek in batches (after filtering {len(allowed_market_data) - len(filtered_market_data)} blocked tokens)")
+        analysis_result = analyzer.analyze_market_data(filtered_market_data, news_summary)
 
         logger.info(f"AI analysis complete. Market phase: {analysis_result.get('market_phase', 'unknown')}")
 

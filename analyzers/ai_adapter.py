@@ -1,9 +1,11 @@
 import json
 import requests
 import logging
+import time
 from datetime import datetime
 from typing import Dict, List, Any
 from config.settings import Config
+from analyzers.historical_stats import historical_stats
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,33 @@ class DeepSeekAnalyzer:
         self.api_key = self.config.DEEPSEEK_API_KEY
         self.api_base = self.config.DEEPSEEK_API_BASE
         self.model = self.config.DEEPSEEK_MODEL
+        self.log_dir = 'logs'
+
+    def _write_deepseek_log(self, batch_size: int, prompt: str, response_content: str, signals_count: int):
+        """Универсальный метод логирования запросов DeepSeek - работает локально и в докере"""
+        try:
+            log_data = {
+                'timestamp': datetime.utcnow().isoformat(),
+                'batch_size': batch_size,
+                'prompt_sent': prompt,
+                'raw_response': response_content,
+                'signals_count': signals_count
+            }
+
+            import os
+            os.makedirs(self.log_dir, exist_ok=True)
+
+            log_filename = f'deepseek_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.json'
+            log_file = os.path.join(self.log_dir, log_filename)
+
+            with open(log_file, 'w', encoding='utf-8') as f:
+                json.dump(log_data, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"✅ ЛОГ ЗАПИСАН: {log_filename}")
+
+        except Exception as log_error:
+            logger.warning(f"⚠️ НЕ КРИТИЧЕСКАЯ ОШИБКА ЗАПИСИ ЛОГА: {str(log_error)}")
+            # ❗️ НЕ ВЫБРАСЫВАЕМ ИСКЛЮЧЕНИЕ! Лог не важнее реальных данных
 
     def analyze_market_data(self, market_data: List[Dict], news_summary: str) -> Dict:
         """
@@ -39,18 +68,34 @@ Your task: based on provided on-chain data, trading activity, and news:
    - Historical analog (specific period)
    - Brief reasoning in RUSSIAN LANGUAGE
 
+IMPORTANT TRADING PARAMETERS:
+- Устанавливай тейк-профит на 10% от цены входа (take_profit = entry * 1.10)
+- Устанавливай стоп-лосс на 5% от цены входа (stop_loss = entry * 0.95)
+- Торгуй агрессивнее и быстрее - фиксируй прибыль на 10%, не жди больших движений
+- Лучше взять 10% прибыли сейчас, чем ждать 50% и упустить возможность
+
 IMPORTANT: You NEVER suggest buying at current highs. You specify DIP entry prices.
 REASONING MUST BE IN RUSSIAN. All other fields remain in English.
 Format response as strict JSON."""
+
+        max_retries = 3
+        retry_delay = 5  # seconds
+        timeout = 120  # increased from 30 to 120 seconds
 
         try:
             batch_size = 150
             signals: List[Dict[str, Any]] = []
             market_phase = "unknown"
 
+            # Получаем актуальную статистику из базы данных
+            stats_summary = historical_stats().format_prompt_summary()
+            
             for batch_start in range(0, len(market_data), batch_size):
                 batch = market_data[batch_start:batch_start + batch_size]
                 user_prompt = f"""
+=== ИСТОРИЧЕСКАЯ СТАТИСТИКА ИЗ БД ===
+{stats_summary}
+
 === MARKET DATA ===
 {json.dumps(batch, indent=2, default=str)[:9000]}...(truncated)
 
@@ -79,30 +124,67 @@ Return JSON in format (include all qualifying assets from the input):
 }}
 """
 
-                response = requests.post(
-                    f"{self.api_base}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": self.model,
-                        "messages": [
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_prompt}
-                        ],
-                        "temperature": 0.3,
-                        "response_format": {"type": "json_object"}
-                    },
-                    timeout=30
-                )
+                # Retry logic for API calls
+                last_error = None
+                for attempt in range(max_retries):
+                    try:
+                        logger.info(f"DeepSeek API call attempt {attempt + 1}/{max_retries}")
+                        response = requests.post(
+                            f"{self.api_base}/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self.api_key}",
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "model": self.model,
+                                "messages": [
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": user_prompt}
+                                ],
+                                "temperature": 0.3,
+                                "response_format": {"type": "json_object"}
+                            },
+                            timeout=timeout
+                        )
 
-                response.raise_for_status()
-                result = response.json()
-                content = result["choices"][0]["message"]["content"]
-                batch_result = json.loads(content)
-                market_phase = batch_result.get("market_phase", market_phase)
-                signals.extend(batch_result.get("signals", []))
+                        response.raise_for_status()
+                        result = response.json()
+                        content = result["choices"][0]["message"]["content"]
+                        batch_result = json.loads(content)
+                        market_phase = batch_result.get("market_phase", market_phase)
+                        signals.extend(batch_result.get("signals", []))
+                        logger.info(f"DeepSeek API call successful, got {len(batch_result.get('signals', []))} signals")
+                        
+                        # ✅ Логирование полного запроса и ответа DeepSeek
+                        self._write_deepseek_log(
+                            batch_size=len(batch),
+                            prompt=user_prompt,
+                            response_content=content,
+                            signals_count=len(batch_result.get('signals', []))
+                        )
+                        break  # Success, exit retry loop
+
+                    except requests.exceptions.Timeout as te:
+                        last_error = te
+                        logger.warning(f"DeepSeek API timeout on attempt {attempt + 1}/{max_retries}: {te}")
+                        if attempt < max_retries - 1:
+                            logger.info(f"Retrying in {retry_delay} seconds...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                        else:
+                            logger.error("All retry attempts failed due to timeout")
+                            raise
+
+                    except requests.exceptions.RequestException as re:
+                        last_error = re
+                        logger.warning(f"DeepSeek API error on attempt {attempt + 1}/{max_retries}: {re}")
+                        if attempt < max_retries - 1:
+                            logger.info(f"Retrying in {retry_delay} seconds...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2
+                        else:
+                            logger.error("All retry attempts failed")
+                            raise
 
             return {
                 "market_phase": market_phase,
@@ -110,12 +192,20 @@ Return JSON in format (include all qualifying assets from the input):
             }
 
         except Exception as e:
-            logger.error(f"DeepSeek API error: {e}")
+            logger.error(f"DeepSeek API error after all retries: {e}")
             return self.analyze_with_mock(market_data, news_summary)
 
     def analyze_with_mock(self, market_data: List[Dict], news_summary: str) -> Dict:
         """Mock analysis for testing without API key"""
         logger.info("Using mock analysis (no DeepSeek API)")
+
+        # ✅ Логирование и для тестового режима
+        self._write_deepseek_log(
+            batch_size=len(market_data),
+            prompt='MOCK MODE',
+            response_content='MOCK RESPONSE',
+            signals_count=2
+        )
 
         return {
             "market_phase": "early altseason",

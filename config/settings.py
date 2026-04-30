@@ -92,6 +92,18 @@ class Config:
         return user_settings.get('trading', {}).get('min_take_profit_percent', 1.0)
 
     @property
+    def TOKEN_MIN_TRADES_FOR_BLOCK(self):
+        return user_settings.get('trading', {}).get('token_min_trades_for_block', 3)
+
+    @property
+    def TOKEN_LOSS_LOOKBACK_DAYS(self):
+        return user_settings.get('trading', {}).get('token_loss_lookback_days', 90)
+
+    @property
+    def TOKEN_MAX_LOSS_RATIO_PERCENT(self):
+        return user_settings.get('trading', {}).get('token_max_loss_ratio_percent', 60)
+
+    @property
     def UNSUPPORTED_SYMBOLS(self):
         symbols = user_settings.get('trading', {}).get('unsupported_symbols', [])
         if isinstance(symbols, str):

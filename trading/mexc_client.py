@@ -23,12 +23,31 @@ class MEXCClient:
         self.secret_key = self.config.MEXC_SECRET_KEY
         self.base_url = self.config.MEXC_BASE_URL
         self.session = requests.Session()
+        self.time_offset = 0  # Offset between local time and server time
 
         if not self.api_key or not self.secret_key:
             logger.warning("MEXC API keys not configured")
+        else:
+            # Synchronize time with server on initialization
+            self._sync_server_time()
+
+    def _sync_server_time(self):
+        """Synchronize local time with MEXC server time"""
+        try:
+            response = self.session.get(f"{self.base_url}/api/v3/time")
+            response.raise_for_status()
+            server_time = response.json().get('serverTime', 0)
+            local_time = int(time.time() * 1000)
+            self.time_offset = server_time - local_time
+            logger.info(f"Time synchronized with MEXC server. Offset: {self.time_offset}ms")
+        except Exception as e:
+            logger.warning(f"Failed to sync time with MEXC server: {e}. Using local time.")
+            self.time_offset = 0
 
     def _generate_signature(self, query_string: str) -> str:
         """Generate HMAC SHA256 signature"""
+        if not self.secret_key:
+            raise ValueError("Secret key not configured")
         return hmac.new(
             self.secret_key.encode('utf-8'),
             query_string.encode('utf-8'),
@@ -48,8 +67,11 @@ class MEXCClient:
         }
 
         if signed:
-            timestamp = str(int(time.time() * 1000))
+            # Use server time if synchronized, otherwise local time
+            current_time = int(time.time() * 1000) + self.time_offset
+            timestamp = str(current_time)
             params['timestamp'] = timestamp
+            params['recvWindow'] = '5000'  # 5 second window
 
             # Build query string in the order parameters are added
             query_string = urlencode(params)
@@ -95,6 +117,9 @@ class MEXCClient:
             data = self._make_request('GET', '/api/v3/ticker/price', {'symbol': symbol})
             if data and 'price' in data:
                 return float(data['price'])
+            # Return error info for invalid symbols
+            if data and 'error' in data:
+                return None
         except Exception as e:
             logger.error(f"Failed to get price for {symbol}: {e}")
         return None
@@ -127,10 +152,20 @@ class MEXCClient:
             logger.info(f"Attempting to place buy order for {symbol} with ${amount_usdt} USDT")
 
             # Get current price
-            price = self.get_symbol_price(symbol)
-            if not price:
+            price_data = self._make_request('GET', '/api/v3/ticker/price', {'symbol': symbol})
+            if 'error' in price_data:
+                error_code = price_data.get('code')
+                logger.error(f"Could not get price for {symbol}: {price_data['error']}")
+                return {'error': price_data['error'], 'code': error_code}
+            if 'price' not in price_data:
                 logger.error(f"Could not get price for {symbol}")
                 return {'error': f'Could not get price for {symbol}'}
+            price = float(price_data['price'])
+            
+            # Check for zero or invalid price
+            if price <= 0:
+                logger.error(f"Invalid price for {symbol}: {price}")
+                return {'error': f'Invalid price for {symbol}: {price}', 'code': -1121}
 
             logger.info(f"Current price for {symbol}: ${price}")
 
@@ -146,17 +181,29 @@ class MEXCClient:
 
             logger.info(f"Symbol info retrieved for {symbol}")
 
-            # Apply precision - find LOT_SIZE filter
-            filters = symbol_info.get('filters', [])
-            step_size = '0.00000001'  # default
-            for filter_info in filters:
-                if filter_info.get('filterType') == 'LOT_SIZE':
-                    step_size = filter_info.get('stepSize', '0.00000001')
-                    break
-
-            step_size = float(step_size)
-            precision = len(str(step_size).split('.')[-1].rstrip('0'))
+            # Apply precision using baseSizePrecision from symbol info
+            base_precision = symbol_info.get('baseSizePrecision', '0')
+            # baseSizePrecision is a string like '0.01' or '0.0001', need to count decimal places
+            try:
+                if '.' in str(base_precision):
+                    precision = len(str(base_precision).split('.')[1].rstrip('0'))
+                else:
+                    precision = int(base_precision)
+            except (ValueError, TypeError):
+                precision = 8  # Default precision for crypto
             quantity = round(quantity, precision)
+
+            # Also check quoteOrderQty precision
+            quote_precision = symbol_info.get('quoteAmountPrecision', '2')
+            # quoteAmountPrecision is also a string like '0.01' or '2'
+            try:
+                if '.' in str(quote_precision):
+                    quote_prec = len(str(quote_precision).split('.')[1].rstrip('0'))
+                else:
+                    quote_prec = int(quote_precision)
+            except (ValueError, TypeError):
+                quote_prec = 2  # Default precision for USDT
+            amount_usdt = round(amount_usdt, quote_prec)
 
             logger.info(f"Adjusted quantity with precision {precision}: {quantity} {symbol}")
 
@@ -204,8 +251,17 @@ class MEXCClient:
                 logger.info(f"Successfully placed buy order for {quantity} {symbol} at ~${amount_usdt}")
                 return order_result
             else:
+                # Handle specific error codes
+                error_code = order_result.get('code') if isinstance(order_result, dict) else None
+                error_msg = order_result.get('error', 'Unknown error') if isinstance(order_result, dict) else 'Unknown error'
+                
+                # Error 30004: Insufficient position/balance
+                if error_code == 30004:
+                    logger.error(f"❌ Insufficient USDT balance for {symbol}. Please deposit USDT to your MEXC spot account.")
+                    return {'error': 'Insufficient USDT balance', 'code': 30004}
+                
                 logger.error(f"Failed to place buy order: {order_result}")
-                return {'error': 'Order placement failed'}
+                return {'error': error_msg, 'code': error_code}
 
         except Exception as e:
             logger.error(f"Error placing buy order: {e}")

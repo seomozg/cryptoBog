@@ -231,31 +231,54 @@ class DexPaprikaCollector:
                 session.add(token)
                 session.commit()
 
-            # Save price snapshot
-            price_snapshot = PriceSnapshot(
-                time=datetime.utcnow(),
-                token_id=token.id,
-                price_usd=data['price_usd'],
-                liquidity_usd=data['liquidity_usd'],
-                volume_24h=data['volume_24h'],
-                fdv_usd=data['fdv_usd'],
-                market_cap_usd=data['market_cap_usd']
-            )
-            session.add(price_snapshot)
+            # Use a single timestamp for both records to ensure consistency
+            current_time = datetime.utcnow()
 
-            # Save trade activity
-            trade_activity = TradeActivity(
-                time=datetime.utcnow(),
-                token_id=token.id,
-                buys_1h=data['buys_1h'],
-                sells_1h=data['sells_1h'],
-                buys_24h=data['buys_24h'],
-                sells_24h=data['sells_24h'],
-                txns_1h=data['txns_1h'],
-                txns_24h=data['txns_24h'],
-                volume_1h=data['volume_1h']
+            # Save price snapshot using raw SQL with ON CONFLICT DO NOTHING
+            from sqlalchemy import text
+            session.execute(
+                text("""
+                    INSERT INTO price_snapshots (time, token_id, price_usd, liquidity_usd, volume_24h, fdv_usd, market_cap_usd)
+                    VALUES (:time, :token_id, :price_usd, :liquidity_usd, :volume_24h, :fdv_usd, :market_cap_usd)
+                    ON CONFLICT (time, token_id) DO NOTHING
+                """),
+                {
+                    'time': current_time,
+                    'token_id': token.id,
+                    'price_usd': data['price_usd'],
+                    'liquidity_usd': data['liquidity_usd'],
+                    'volume_24h': data['volume_24h'],
+                    'fdv_usd': data['fdv_usd'],
+                    'market_cap_usd': data['market_cap_usd']
+                }
             )
-            session.add(trade_activity)
+
+            # Save trade activity using raw SQL with ON CONFLICT DO UPDATE
+            session.execute(
+                text("""
+                    INSERT INTO trade_activity (time, token_id, buys_1h, sells_1h, buys_24h, sells_24h, txns_1h, txns_24h, volume_1h)
+                    VALUES (:time, :token_id, :buys_1h, :sells_1h, :buys_24h, :sells_24h, :txns_1h, :txns_24h, :volume_1h)
+                    ON CONFLICT (time, token_id) DO UPDATE SET
+                        buys_1h = EXCLUDED.buys_1h,
+                        sells_1h = EXCLUDED.sells_1h,
+                        buys_24h = EXCLUDED.buys_24h,
+                        sells_24h = EXCLUDED.sells_24h,
+                        txns_1h = EXCLUDED.txns_1h,
+                        txns_24h = EXCLUDED.txns_24h,
+                        volume_1h = EXCLUDED.volume_1h
+                """),
+                {
+                    'time': current_time,
+                    'token_id': token.id,
+                    'buys_1h': data['buys_1h'],
+                    'sells_1h': data['sells_1h'],
+                    'buys_24h': data['buys_24h'],
+                    'sells_24h': data['sells_24h'],
+                    'txns_1h': data['txns_1h'],
+                    'txns_24h': data['txns_24h'],
+                    'volume_1h': data['volume_1h']
+                }
+            )
 
             session.commit()
             session.close()

@@ -20,6 +20,7 @@ class TradeManager:
         self.config = Config()
         self.mexc_client = MEXCClient()
         self.telegram_bot = None
+        self._blocked_tokens = {}  # token -> (reason, blocked_at)
 
     def _get_telegram_bot(self):
         """Lazy initialization of Telegram bot"""
@@ -34,6 +35,133 @@ class TradeManager:
             self.telegram_bot = TelegramBot()
         return self.telegram_bot
 
+    def _is_valid_symbol(self, asset: str) -> bool:
+        """Check if asset name is valid for MEXC API"""
+        if not asset:
+            return False
+        # Check for spaces, special characters, or too long names
+        if ' ' in asset or len(asset) > 20:
+            return False
+        # Check for only alphanumeric characters
+        if not asset.replace('_', '').isalnum():
+            return False
+        return True
+
+    def analyze_token_trades(self, symbol: str) -> Dict:
+        """
+        Analyze closed trades for a specific token to determine if it should be blocked.
+        Returns dict with analysis results.
+        """
+        from datetime import timedelta
+        
+        try:
+            session = db_manager.get_session()
+            lookback_time = datetime.utcnow() - timedelta(days=self.config.TOKEN_LOSS_LOOKBACK_DAYS)
+            
+            # Get closed positions for this symbol in lookback period
+            closed_positions = session.query(TradePosition).filter(
+                TradePosition.symbol == symbol,
+                TradePosition.status == 'CLOSED',
+                TradePosition.closed_at >= lookback_time
+            ).order_by(TradePosition.closed_at.desc()).all()
+            
+            if not closed_positions:
+                session.close()
+                return {
+                    'should_block': False,
+                    'reason': 'No trades for this token',
+                    'total_trades': 0,
+                    'wins': 0,
+                    'losses': 0,
+                    'loss_ratio': 0
+                }
+            
+            wins = 0
+            losses = 0
+            
+            for pos in closed_positions:
+                if pos.exit_price is None:
+                    continue
+                    
+                pnl = (pos.exit_price - pos.entry_price) * pos.quantity
+                if pnl > 0:
+                    wins += 1
+                else:
+                    losses += 1
+            
+            total_trades = wins + losses
+            loss_ratio = (losses / total_trades * 100) if total_trades > 0 else 0
+            
+            # Determine if token should be blocked
+            should_block = False
+            reason = ""
+            
+            min_trades = self.config.TOKEN_MIN_TRADES_FOR_BLOCK
+            max_loss_ratio = self.config.TOKEN_MAX_LOSS_RATIO_PERCENT
+            
+            if total_trades >= min_trades and loss_ratio >= max_loss_ratio:
+                should_block = True
+                reason = f"🚫 Токен {symbol} заблокирован: {losses} убыточных из {total_trades} сделок ({loss_ratio:.0f}%) за {self.config.TOKEN_LOSS_LOOKBACK_DAYS} дней"
+            
+            session.close()
+            
+            return {
+                'should_block': should_block,
+                'reason': reason,
+                'total_trades': total_trades,
+                'wins': wins,
+                'losses': losses,
+                'loss_ratio': loss_ratio
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing token trades for {symbol}: {e}")
+            return {
+                'should_block': False,
+                'reason': f'Error: {str(e)}',
+                'total_trades': 0,
+                'wins': 0,
+                'losses': 0,
+                'loss_ratio': 0
+            }
+
+    def check_token_allowed(self, symbol: str) -> tuple[bool, str]:
+        """
+        Check if trading is allowed for a specific token.
+        Returns (allowed, reason) tuple.
+        """
+        # Check if token is in blocked list
+        if symbol in self._blocked_tokens:
+            return False, self._blocked_tokens[symbol]
+            
+        analysis = self.analyze_token_trades(symbol)
+        
+        if analysis['should_block']:
+            self._blocked_tokens[symbol] = analysis['reason']
+            logger.warning(f"⚠️ {analysis['reason']}")
+            
+            # Send notification about blocked token
+            try:
+                telegram_bot = self._get_telegram_bot()
+                message = f"""🚫 *ТОКЕН ЗАБЛОКИРОВАН* 🚫
+
+🎯 **{symbol.replace('USDT', '')}**
+
+📊 Статистика за {self.config.TOKEN_LOSS_LOOKBACK_DAYS} дней:
+• Всего сделок: {analysis['total_trades']}
+• Прибыльных: {analysis['wins']}
+• Убыточных: {analysis['losses']}
+• Процент убыточных: {analysis['loss_ratio']:.0f}%
+
+💡 Токен добавлен в стоп-лист. Покупки этого токена пропускаются."""
+                telegram_bot.send_status_message(message)
+            except Exception as e:
+                logger.error(f"Error sending block notification: {e}")
+                
+            return False, analysis['reason']
+            
+        return True, ""
+
     def execute_signal_buy(self, signal) -> bool:
         """Execute buy order for trading signal"""
         if not self.config.ENABLE_AUTO_TRADING:
@@ -41,11 +169,37 @@ class TradeManager:
             return False
 
         try:
+            # Validate asset name
+            if not self._is_valid_symbol(signal.asset):
+                logger.warning(f"Skipping invalid asset name for API trading: {signal.asset}")
+                self._mark_signal_traded(signal)
+                return False
+
             # Convert symbol to MEXC format (add USDT)
             symbol = f"{signal.asset}USDT"
 
+            # Check if token is allowed based on its trade history
+            allowed, reason = self.check_token_allowed(symbol)
+            if not allowed:
+                logger.warning(f"⚠️ Token blocked: {reason}")
+                self._mark_signal_traded(signal)
+                return False
+
             if symbol in self.config.UNSUPPORTED_SYMBOLS:
                 logger.warning(f"Skipping unsupported symbol for API trading: {symbol}")
+                self._mark_signal_traded(signal)
+                return False
+
+            # Check if there's already an open position for this asset
+            session = db_manager.get_session()
+            existing_position = session.query(TradePosition).filter(
+                TradePosition.symbol == symbol,
+                TradePosition.status == 'OPEN'
+            ).first()
+            session.close()
+
+            if existing_position:
+                logger.warning(f"⚠️ Already have open position for {symbol}, skipping buy")
                 self._mark_signal_traded(signal)
                 return False
 
@@ -65,8 +219,10 @@ class TradeManager:
                 return True
             else:
                 logger.error(f"Failed to execute buy order for {signal.asset}: {order_result['error']}")
-                # If symbol is not supported by API, mark as traded and persist unsupported symbol
-                if order_result.get('code') == 10007:
+                # If symbol is not supported by API (code -1121 or 10007), mark as traded and add to unsupported
+                error_code = order_result.get('code')
+                if error_code in [-1121, 10007]:
+                    logger.warning(f"Symbol {symbol} not found on MEXC, adding to unsupported list")
                     self.config.add_unsupported_symbol(symbol)
                     self._mark_signal_traded(signal)
                 return False
@@ -124,21 +280,30 @@ class TradeManager:
             symbol = position.symbol.replace('USDT', '')  # Remove USDT suffix
             current_price = current_prices.get(symbol)
 
+            # If price not found in DEX data, try to get from MEXC API
             if not current_price:
-                return False
+                logger.info(f"📊 Price for {symbol} not in DEX data, fetching from MEXC...")
+                current_price = self.mexc_client.get_symbol_price(position.symbol)
+                if current_price:
+                    logger.info(f"💰 MEXC price for {position.symbol}: ${current_price:.4f}")
+                else:
+                    logger.warning(f"⚠️ Could not get price for {position.symbol} from any source")
+                    return False
 
             entry_price = position.entry_price
             stop_loss = position.stop_loss
             take_profit = position.take_profit
 
+            logger.info(f"📈 {position.symbol}: current=${current_price:.4f}, entry=${entry_price:.4f}, stop=${stop_loss:.4f}, target=${take_profit:.4f}")
+
             # Check stop loss (sell if price drops below stop loss)
             if current_price <= stop_loss:
-                logger.info(f"Stop loss triggered for {position.symbol}: current ${current_price:.4f} <= stop ${stop_loss:.4f}")
+                logger.info(f"🛑 Stop loss triggered for {position.symbol}: current ${current_price:.4f} <= stop ${stop_loss:.4f}")
                 return True
 
             # Check take profit (sell if price reaches take profit)
             if current_price >= take_profit:
-                logger.info(f"Take profit triggered for {position.symbol}: current ${current_price:.4f} >= target ${take_profit:.4f}")
+                logger.info(f"🎯 Take profit triggered for {position.symbol}: current ${current_price:.4f} >= target ${take_profit:.4f}")
                 return True
 
             return False
@@ -167,6 +332,7 @@ class TradeManager:
 
                 # Send Telegram notification about the trade
                 self._send_sell_notification(position, order_result)
+                
                 return True
             else:
                 logger.error(f"Failed to execute sell order for {position.symbol}: {order_result['error']}")
@@ -351,3 +517,22 @@ class TradeManager:
             session.close()
         except Exception as e:
             logger.error(f"Error marking signal as traded: {e}")
+
+    def get_blocked_tokens(self) -> Dict:
+        """Get list of blocked tokens"""
+        return self._blocked_tokens.copy()
+
+    def unblock_token(self, symbol: str) -> bool:
+        """
+        Remove token from blocked list.
+        Returns True if token was unblocked.
+        """
+        if symbol in self._blocked_tokens:
+            del self._blocked_tokens[symbol]
+            logger.info(f"✅ Токен {symbol} разблокирован")
+            return True
+        return False
+
+    def get_token_stats(self, symbol: str) -> Dict:
+        """Get trading statistics for a specific token"""
+        return self.analyze_token_trades(symbol)

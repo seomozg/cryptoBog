@@ -1,6 +1,6 @@
 {
   "analysis": {
-    "collection_interval_minutes": 30,
+    "collection_interval_minutes": 240,
     "min_signal_confidence": 0.65,
     "max_signals_per_day": 100,
     "min_risk_reward": 1.5,
@@ -19,9 +19,28 @@
     "enable_auto_trading": true,
     "trade_amount_usdt": 10,
     "min_take_profit_percent": 1,
+    "token_min_trades_for_block": 3,
+    "token_loss_lookback_days": 90,
+    "token_max_loss_ratio_percent": 60,
     "unsupported_symbols": [
       "ETHUSDT",
-      "BTCUSDT"
+      "BTCUSDT",
+      "WKEYDAO2USDT",
+      "LGNSUSDT",
+      "ADSUSDT",
+      "WKEYDAOUSDT",
+      "MTLUSDT",
+      "SOLOUSDT",
+      "XSN64USDT",
+      "PMUSDUSDT",
+      "00USDT",
+      "JUPUSDUSDT",
+      "WTAOUSDT",
+      "OMXUSDT",
+      "AIFIUSDT",
+      "TFPUSDT",
+      "WHBARUSDT",
+      "SPYUSDTUSDT"
     ]
   }
 }

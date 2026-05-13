@@ -53,26 +53,26 @@ class DeepSeekAnalyzer:
             logger.error("DeepSeek API key not configured")
             raise ValueError("DeepSeek API key is required for analysis")
 
-        system_prompt = """You are a probabilistic crypto analyst with access to historical patterns from 2019-2026.
+        system_prompt = """You are a crypto trading analyst specializing in short-term swing trades on altcoins.
 
-Your task: based on provided on-chain data, trading activity, and news:
+Your task: analyze the provided on-chain data including PRICE TRENDS (5m, 1h, 6h, 24h changes), trading activity, and liquidity:
 1. Determine the current market phase (early bull, late bull, bear, consolidation)
-2. Identify ALL promising assets for BUY ON DIP from the provided dataset (not on highs!)
+2. Return ONLY 0-3 HIGHEST-QUALITY signals — quality over quantity. If no strong setups exist, return empty array.
 3. For each selected asset provide:
-   - Specific entry price range (min-max)
-   - Stop-loss (in $ and %)
-   - Take-profit (in $ and %)
-   - Success probability (0-100%)
-   - Confidence in signal (0-100%)
-   - Risk/reward ratio
-   - Historical analog (specific period)
+   - Specific DIP entry price (below current price — we buy dips, not highs!)
+   - Stop-loss: 5% below entry (entry * 0.95)
+   - Take-profit: 10% above entry (entry * 1.10)
+   - Probability: your estimate of success chance (50-90%)
+   - Confidence: your REAL certainty in this signal reaching TP (75-90%). Only give 80+ if pattern is clear.
+   - Risk/reward ratio (should be ~2.0)
+   - Historical analog (similar pattern from past)
    - Brief reasoning in RUSSIAN LANGUAGE
 
-IMPORTANT TRADING PARAMETERS:
-- Устанавливай тейк-профит на 10% от цены входа (take_profit = entry * 1.10)
-- Устанавливай стоп-лосс на 5% от цены входа (stop_loss = entry * 0.95)
-- Торгуй агрессивнее и быстрее - фиксируй прибыль на 10%, не жди больших движений
-- Лучше взять 10% прибыли сейчас, чем ждать 50% и упустить возможность
+CRITICAL RULES:
+- confidence MUST reflect your genuine belief in a 10%+ move. If unsure, confidence < 75.
+- Look for: price dropping (-5% to -15% in 6h/24h) but buying pressure increasing (buys > sells) = reversal signal
+- Avoid: tokens pumping (+20%+ in 24h), selling pressure dominating, low liquidity
+- Empty signals array is BETTER than weak signals. Only signal when you see a clear pattern.
 
 IMPORTANT: You NEVER suggest buying at current highs. You specify DIP entry prices.
 REASONING MUST BE IN RUSSIAN. All other fields remain in English.
@@ -83,7 +83,7 @@ Format response as strict JSON."""
         timeout = 120  # increased from 30 to 120 seconds
 
         try:
-            batch_size = 150
+            batch_size = 20  # Smaller batch for better analysis quality
             signals: List[Dict[str, Any]] = []
             market_phase = "unknown"
 
@@ -97,28 +97,28 @@ Format response as strict JSON."""
 {stats_summary}
 
 === MARKET DATA ===
-{json.dumps(batch, indent=2, default=str)[:9000]}...(truncated)
+{json.dumps(batch, indent=2, default=str)}
 
 === NEWS SUMMARY ===
 {news_summary}
 
 === REQUEST ===
-Return JSON in format (include all qualifying assets from the input):
+Return JSON. Return 0-3 signals MAX. Empty array if no strong setups. Quality > quantity.
 {{
   "market_phase": "bull/bear/consolidation",
   "signals": [
     {{
-      "asset": "BTC",
+      "asset": "ETH",
       "action": "BUY_ON_DIP",
-      "entry_min": 60000.0,
-      "entry_max": 61000.0,
-      "stop_loss": 58000.0,
-      "take_profit": 67000.0,
+      "entry_min": 3000.0,
+      "entry_max": 3100.0,
+      "stop_loss": 2850.0,
+      "take_profit": 3410.0,
       "probability": 75.0,
-      "confidence": 80.0,
-      "risk_reward": 2.1,
-      "historical_analog": "January 2024, pre-ETF",
-      "reasoning": "Brief explanation"
+      "confidence": 85.0,
+      "risk_reward": 2.0,
+      "historical_analog": "March 2024 recovery",
+      "reasoning": "Brief explanation IN RUSSIAN"
     }}
   ]
 }}

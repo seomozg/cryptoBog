@@ -116,6 +116,12 @@ class DexPaprikaCollector:
             if liquidity_usd < self.config.MIN_LIQUIDITY_USD:
                 continue
 
+            # Extract price changes from DEX Screener (critical for trend analysis)
+            price_change_m5 = best_pair.get('priceChange', {}).get('m5', 0) or 0
+            price_change_h1 = best_pair.get('priceChange', {}).get('h1', 0) or 0
+            price_change_h6 = best_pair.get('priceChange', {}).get('h6', 0) or 0
+            price_change_h24 = best_pair.get('priceChange', {}).get('h24', 0) or 0
+            
             data = {
                 'network': network,
                 'token_address': token_address,
@@ -132,7 +138,11 @@ class DexPaprikaCollector:
                 'sells_24h': best_pair.get('txns', {}).get('h24', {}).get('sells', 0),
                 'txns_1h': best_pair.get('txns', {}).get('h1', {}).get('buys', 0) + best_pair.get('txns', {}).get('h1', {}).get('sells', 0),
                 'txns_24h': best_pair.get('txns', {}).get('h24', {}).get('buys', 0) + best_pair.get('txns', {}).get('h24', {}).get('sells', 0),
-                'volume_1h': best_pair.get('volume', {}).get('h1', 0)
+                'volume_1h': best_pair.get('volume', {}).get('h1', 0),
+                'price_change_5m': price_change_m5,
+                'price_change_1h': price_change_h1,
+                'price_change_6h': price_change_h6,
+                'price_change_24h': price_change_h24
             }
 
             seen_addresses.add(token_address)

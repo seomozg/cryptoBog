@@ -31,23 +31,42 @@ celery_app.conf.update(
 @celery_app.task
 def collect_data_task(network: str = "ethereum", limit: int = 100):
     """
-    Periodic data collection task
+    Periodic data collection task — collects from multiple networks
     """
     try:
-        logger.info(f"Starting data collection for {network}")
+        logger.info(f"Starting multi-network data collection")
 
         if db_manager.SessionLocal is None:
             db_manager.init_db()
 
-        # Collect market data
         collector = DexPaprikaCollector()
-        market_data = collector.collect_for_analysis(network, limit)
+        all_market_data = []
+        
+        # Collect from multiple networks for broader coverage
+        networks = ["ethereum", "bsc", "solana"]
+        for net in networks:
+            try:
+                net_data = collector.collect_for_analysis(net, limit=None, persist=False)
+                logger.info(f"Collected {len(net_data)} tokens from {net}")
+                all_market_data.extend(net_data)
+            except Exception as e:
+                logger.warning(f"Failed to collect from {net}: {e} — continuing with other networks")
+        
+        # Deduplicate by token_address
+        seen = set()
+        deduped = []
+        for token in all_market_data:
+            addr = token.get('token_address', '')
+            if addr and addr not in seen:
+                seen.add(addr)
+                deduped.append(token)
+        
+        logger.info(f"Total collected: {len(all_market_data)} tokens, {len(deduped)} unique after dedup")
 
         news_summary = "News collection disabled due to API issues"
-        logger.info(f"Collected {len(market_data)} market data points")
 
         return {
-            'market_data': market_data,
+            'market_data': deduped,
             'news_summary': news_summary
         }
 

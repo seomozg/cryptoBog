@@ -4,13 +4,13 @@
     "min_signal_confidence": 0.78,
     "max_signals_per_day": 5,
     "min_risk_reward": 1.5,
-    "include_memecoins": false,
+    "include_memecoins": true,
     "timezone": "GMT+7"
   },
   "data_collection": {
-    "min_market_cap_usd": 500000,
-    "min_token_price_usd": 0.001,
-    "min_liquidity_usd": 10000,
+    "min_market_cap_usd": 100000,
+    "min_token_price_usd": 0.0001,
+    "min_liquidity_usd": 5000,
     "stablecoins": "USDT,USDC,BUSD,DAI,USDP",
     "stablecoin_min_price": 0.1,
     "stablecoin_max_price": 10

@@ -14,7 +14,7 @@ DEFAULT_STOP_LOSS_PERCENT = 5.0
 MIN_ACCEPTABLE_TP_PERCENT = 5.0    # Below this, signal is suspicious
 MAX_ACCEPTABLE_TP_PERCENT = 30.0   # Above this, unrealistically optimistic
 MIN_ACCEPTABLE_SL_PERCENT = 2.0    # Below this, too tight — will get stopped out
-MAX_ACCEPTABLE_SL_PERCENT = 8.0    # Above this, too loose — bad risk management
+MAX_ACCEPTABLE_SL_PERCENT = 12.0   # Above this, too loose — bad risk management (DeepSeek often slightly miscalculates)
 
 # Minimum hourly transactions to consider a token "alive"
 MIN_HOURLY_TXNS = 5

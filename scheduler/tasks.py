@@ -98,16 +98,20 @@ def analyze_data_task(collected_data: dict):
         signal_generator = SignalGenerator()
         filtered_market_data = signal_generator.filter_blocked_tokens(allowed_market_data)
         
+        # Filter dead tokens (stablecoins, no activity, low liquidity)
+        filtered_market_data = signal_generator.filter_dead_tokens(filtered_market_data)
+        
         if not filtered_market_data:
-            logger.info("Все токены заблокированы (плохая история сделок), анализ DeepSeek не выполняется")
+            logger.info("Все токены отфильтрованы (блокировка/мёртвые/стейблкоины), анализ DeepSeek не выполняется")
             return {
                 'market_phase': 'unknown',
                 'signals': []
             }
 
-        # Analyze with AI
+        # Analyze with AI — only send high-quality tokens
         analyzer = DeepSeekAnalyzer()
-        logger.info(f"Sending {len(filtered_market_data)} tokens to DeepSeek in batches (after filtering {len(allowed_market_data) - len(filtered_market_data)} blocked tokens)")
+        logger.info(f"Sending {len(filtered_market_data)} tokens to DeepSeek in batches "
+                   f"(filtered {len(allowed_market_data) - len(filtered_market_data)} low-quality tokens)")
         analysis_result = analyzer.analyze_market_data(filtered_market_data, news_summary)
 
         logger.info(f"AI analysis complete. Market phase: {analysis_result.get('market_phase', 'unknown')}")

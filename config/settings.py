@@ -104,6 +104,26 @@ class Config:
         return user_settings.get('trading', {}).get('token_max_loss_ratio_percent', 60)
 
     @property
+    def MAX_DAILY_LOSS_USDT(self):
+        return user_settings.get('trading', {}).get('max_daily_loss_usdt', 10.0)
+
+    @property
+    def MAX_POSITION_AGE_HOURS(self):
+        return user_settings.get('trading', {}).get('max_position_age_hours', 24)
+
+    @property
+    def TRAILING_STOP_ENABLED(self):
+        return user_settings.get('trading', {}).get('trailing_stop_enabled', True)
+
+    @property
+    def TRAILING_STOP_TRIGGER_PERCENT(self):
+        return user_settings.get('trading', {}).get('trailing_stop_trigger_percent', 5.0)
+
+    @property
+    def TRAILING_STOP_DISTANCE_PERCENT(self):
+        return user_settings.get('trading', {}).get('trailing_stop_distance_percent', 2.0)
+
+    @property
     def UNSUPPORTED_SYMBOLS(self):
         symbols = user_settings.get('trading', {}).get('unsupported_symbols', [])
         if isinstance(symbols, str):

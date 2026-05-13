@@ -21,6 +21,9 @@ class TradeManager:
         self.mexc_client = MEXCClient()
         self.telegram_bot = None
         self._blocked_tokens = {}  # token -> (reason, blocked_at)
+        self._daily_pnl = 0.0
+        self._daily_pnl_date = None
+        self._trailing_stops = {}  # symbol -> highest_price_seen
 
     def _get_telegram_bot(self):
         """Lazy initialization of Telegram bot"""
@@ -80,11 +83,13 @@ class TradeManager:
             losses = 0
             
             for pos in closed_positions:
-                if pos.exit_price is None:
+                if pos.exit_price is None or pos.entry_price is None or pos.entry_price == 0:
                     continue
-                    
-                pnl = (pos.exit_price - pos.entry_price) * pos.quantity
-                if pnl > 0:
+                
+                # FIXED: Use PERCENTAGE PnL for classification, not absolute value
+                # Previously: absolute PnL made high-price tokens always appear worse
+                pnl_percent = (pos.exit_price - pos.entry_price) / pos.entry_price * 100
+                if pnl_percent > 0:
                     wins += 1
                 else:
                     losses += 1
@@ -275,7 +280,14 @@ class TradeManager:
             return 0
 
     def _should_sell_position(self, position, current_prices: Dict[str, float]) -> bool:
-        """Check if position should be sold based on stop loss or take profit"""
+        """
+        Check if position should be sold based on:
+        1. Stop loss
+        2. Take profit
+        3. Trailing stop (if enabled)
+        4. Position age timeout (force close after N hours)
+        5. Daily loss limit breach
+        """
         try:
             symbol = position.symbol.replace('USDT', '')  # Remove USDT suffix
             current_price = current_prices.get(symbol)
@@ -291,19 +303,68 @@ class TradeManager:
                     return False
 
             entry_price = position.entry_price
-            stop_loss = position.stop_loss
+            original_stop_loss = position.stop_loss
             take_profit = position.take_profit
 
-            logger.info(f"📈 {position.symbol}: current=${current_price:.4f}, entry=${entry_price:.4f}, stop=${stop_loss:.4f}, target=${take_profit:.4f}")
+            # === TRAILING STOP LOGIC ===
+            effective_stop_loss = original_stop_loss
+            if self.config.TRAILING_STOP_ENABLED:
+                trigger_pct = self.config.TRAILING_STOP_TRIGGER_PERCENT / 100.0
+                distance_pct = self.config.TRAILING_STOP_DISTANCE_PERCENT / 100.0
+                trigger_price = entry_price * (1 + trigger_pct)
+                
+                # Track highest price seen for this position
+                if position.symbol not in self._trailing_stops:
+                    self._trailing_stops[position.symbol] = current_price
+                
+                if current_price > self._trailing_stops[position.symbol]:
+                    self._trailing_stops[position.symbol] = current_price
+                
+                highest_price = self._trailing_stops[position.symbol]
+                
+                # Activate trailing stop only after price rises above trigger
+                if highest_price >= trigger_price:
+                    trailing_sl = highest_price * (1 - distance_pct)
+                    if trailing_sl > effective_stop_loss:
+                        effective_stop_loss = trailing_sl
+                        logger.info(f"📈 {position.symbol}: Trailing stop activated at ${effective_stop_loss:.4f} "
+                                   f"(highest=${highest_price:.4f}, distance={distance_pct*100:.1f}%)")
 
-            # Check stop loss (sell if price drops below stop loss)
-            if current_price <= stop_loss:
-                logger.info(f"🛑 Stop loss triggered for {position.symbol}: current ${current_price:.4f} <= stop ${stop_loss:.4f}")
+            logger.info(f"📈 {position.symbol}: current=${current_price:.4f}, entry=${entry_price:.4f}, "
+                       f"stop=${effective_stop_loss:.4f}, target=${take_profit:.4f}")
+
+            # Check stop loss (including trailing stop)
+            if current_price <= effective_stop_loss:
+                reason = "trailing stop" if effective_stop_loss > original_stop_loss else "stop loss"
+                logger.info(f"🛑 {reason.title()} triggered for {position.symbol}: current ${current_price:.4f} <= stop ${effective_stop_loss:.4f}")
                 return True
 
-            # Check take profit (sell if price reaches take profit)
+            # Check take profit
             if current_price >= take_profit:
                 logger.info(f"🎯 Take profit triggered for {position.symbol}: current ${current_price:.4f} >= target ${take_profit:.4f}")
+                return True
+
+            # === POSITION AGE TIMEOUT ===
+            if position.opened_at:
+                age_hours = (datetime.utcnow() - position.opened_at).total_seconds() / 3600
+                max_age = self.config.MAX_POSITION_AGE_HOURS
+                if age_hours >= max_age:
+                    pnl_pct = (current_price - entry_price) / entry_price * 100
+                    logger.info(f"⏰ Timeout for {position.symbol}: age={age_hours:.1f}h >= max={max_age}h, PnL={pnl_pct:+.1f}%")
+                    return True
+
+            # === DAILY LOSS LIMIT CHECK ===
+            today = datetime.utcnow().date()
+            if self._daily_pnl_date != today:
+                self._daily_pnl = 0.0
+                self._daily_pnl_date = today
+            
+            unrealized_pnl = (current_price - entry_price) * position.quantity
+            projected_daily_pnl = self._daily_pnl + unrealized_pnl
+            
+            max_daily_loss = self.config.MAX_DAILY_LOSS_USDT
+            if projected_daily_pnl <= -max_daily_loss:
+                logger.warning(f"⚠️ Daily loss limit breach for {position.symbol}: projected PnL=${projected_daily_pnl:.2f} <= -${max_daily_loss}")
                 return True
 
             return False

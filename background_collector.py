@@ -113,9 +113,17 @@ class BackgroundCollector:
                 logger.info("No assets available for new signals (all have open positions)")
                 return 0
 
-            # Analyze with AI using only allowed assets
+            # Filter blocked tokens and dead tokens before sending to DeepSeek
+            filtered_market_data = signal_generator.filter_blocked_tokens(allowed_market_data)
+            filtered_market_data = signal_generator.filter_dead_tokens(filtered_market_data)
+            
+            if not filtered_market_data:
+                logger.info("All tokens filtered out (blocked/dead/stablecoins), skipping DeepSeek")
+                return 0
+
+            # Analyze with AI using only high-quality tokens
             analyzer = DeepSeekAnalyzer()
-            analysis_result = analyzer.analyze_market_data(allowed_market_data, news_summary)
+            analysis_result = analyzer.analyze_market_data(filtered_market_data, news_summary)
 
             if analysis_result:
                 logger.info(f"AI analysis complete. Market phase: {analysis_result.get('market_phase', 'unknown')}")

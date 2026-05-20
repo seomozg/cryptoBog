@@ -1,9 +1,9 @@
 {
   "analysis": {
     "collection_interval_minutes": 240,
-    "min_signal_confidence": 0.78,
-    "max_signals_per_day": 5,
-    "min_risk_reward": 1.5,
+    "min_signal_confidence": 0.6,
+    "max_signals_per_day": 10,
+    "min_risk_reward": 1.2,
     "include_memecoins": true,
     "timezone": "GMT+7"
   },
@@ -16,7 +16,7 @@
     "stablecoin_max_price": 10
   },
   "trading": {
-    "enable_auto_trading": true,
+    "enable_auto_trading": false,
     "trade_amount_usdt": 10,
     "min_take_profit_percent": 1,
     "token_min_trades_for_block": 2,
@@ -45,7 +45,8 @@
       "AIFIUSDT",
       "TFPUSDT",
       "WHBARUSDT",
-      "SPYUSDTUSDT"
+      "SPYUSDTUSDT",
+      "TITNUSDT"
     ]
   }
 }

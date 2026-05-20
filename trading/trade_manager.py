@@ -404,7 +404,7 @@ class TradeManager:
             return False
 
     def _save_position(self, signal, order_result: Dict, side: str):
-        """Save trade position to database"""
+        """Save trade position to database — recalculates SL/TP from ACTUAL fill price"""
         try:
             session = db_manager.get_session()
 
@@ -416,13 +416,27 @@ class TradeManager:
             if order_price == 0:
                 order_price = signal.entry_min
 
+            # CRITICAL FIX: Recalculate SL/TP from ACTUAL fill price, not from signal's estimated entry
+            # The signal's SL/TP were based on entry_min/entry_max, but market orders execute at different prices
+            # This caused SL to be ABOVE entry for low-cap tokens, triggering instant stop-loss
+            actual_stop_loss = round(order_price * 0.95, 8)  # Always 5% below actual fill
+            actual_take_profit = round(order_price * 1.10, 8)  # Always 10% above actual fill
+            
+            # Validate: SL must be below entry, TP must be above entry
+            if actual_stop_loss >= order_price or actual_take_profit <= order_price:
+                logger.error(f"CRITICAL: Computed SL={actual_stop_loss:.8f} >= entry={order_price:.8f} or TP={actual_take_profit:.8f} <= entry. Position NOT saved.")
+                session.close()
+                return
+            
+            logger.info(f"📊 SL/TP recalculated for {signal.asset}: signal_entry={signal.entry_min:.6f}, actual_fill=${order_price:.6f}, SL=${actual_stop_loss:.6f} (-5.0%), TP=${actual_take_profit:.6f} (+10.0%)")
+
             position = TradePosition(
                 symbol=f"{signal.asset}USDT",
                 side=side,
                 quantity=executed_qty,
                 entry_price=order_price,
-                stop_loss=signal.stop_loss,
-                take_profit=signal.take_profit,
+                stop_loss=actual_stop_loss,
+                take_profit=actual_take_profit,
                 order_id=str(order_result.get('orderId', '')),
                 status='OPEN',
                 opened_at=datetime.utcnow()
@@ -436,7 +450,7 @@ class TradeManager:
             asset = signal.asset
             session.close()
 
-            logger.info(f"Saved position for {asset}: {quantity} at ${entry_price:.4f}")
+            logger.info(f"Saved position for {asset}: {quantity} at ${entry_price:.4f}, SL=${actual_stop_loss:.4f}, TP=${actual_take_profit:.4f}")
 
         except Exception as e:
             logger.error(f"Error saving position: {e}")

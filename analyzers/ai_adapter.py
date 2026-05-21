@@ -136,13 +136,12 @@ Return JSON. Return 0-3 signals MAX. Empty array if no strong setups. Quality > 
                                 "Content-Type": "application/json"
                             },
                             json={
-                                "model": self.model,
-                                "messages": [
-                                    {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": user_prompt}
-                                ],
-                                "temperature": 0.3,
-                                "response_format": {"type": "json_object"}
+                                 "model": self.model,
+                                 "messages": [
+                                     {"role": "system", "content": system_prompt},
+                                     {"role": "user", "content": user_prompt}
+                                 ],
+                                 "temperature": 0.3
                             },
                             timeout=timeout
                         )

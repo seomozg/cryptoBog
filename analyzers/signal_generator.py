@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 # Default trading parameters (fallback only if DeepSeek provides bad values)
 DEFAULT_TAKE_PROFIT_PERCENT = 10.0
 DEFAULT_STOP_LOSS_PERCENT = 5.0
-MIN_ACCEPTABLE_TP_PERCENT = 5.0    # Below this, signal is suspicious
-MAX_ACCEPTABLE_TP_PERCENT = 30.0   # Above this, unrealistically optimistic
-MIN_ACCEPTABLE_SL_PERCENT = 2.0    # Below this, too tight — will get stopped out
-MAX_ACCEPTABLE_SL_PERCENT = 12.0   # Above this, too loose — bad risk management (DeepSeek often slightly miscalculates)
+MIN_ACCEPTABLE_TP_PERCENT = 3.0    # Below this, signal is suspicious (relaxed)
+MAX_ACCEPTABLE_TP_PERCENT = 50.0   # Above this, unrealistically optimistic (relaxed)
+MIN_ACCEPTABLE_SL_PERCENT = 1.0    # Below this, too tight — will get stopped out (relaxed)
+MAX_ACCEPTABLE_SL_PERCENT = 20.0   # Above this, too loose — bad risk management (relaxed heavily)
 
 # Minimum hourly transactions to consider a token "alive"
-MIN_HOURLY_TXNS = 5
+MIN_HOURLY_TXNS = 1  # Relaxed — allow low-activity tokens during testing
 
 class SignalGenerator:
     """Generates and filters trading signals"""
@@ -61,43 +61,109 @@ class SignalGenerator:
         stablecoins_filtered = 0
         dead_filtered = 0
         low_activity_filtered = 0
+        sus_price_filtered = 0
         
         for token in market_data:
             symbol = token.get('symbol', '')
             price = token.get('price_usd', 0)
             txns_1h = token.get('txns_1h', 0)
+            txns_24h = token.get('txns_24h', 0)
             volume_24h = token.get('volume_24h', 0)
             buys_24h = token.get('buys_24h', 0)
             sells_24h = token.get('sells_24h', 0)
+            price_change_24h = token.get('price_change_24h', 0)
             
             # Filter stablecoins (price between 0.95 and 1.05)
             if 0.95 <= price <= 1.05 and volume_24h > 1000:
-                # Likely a stablecoin
                 stablecoins = self.config.STABLECOINS
                 if any(sc in symbol.upper() for sc in stablecoins):
                     stablecoins_filtered += 1
                     logger.debug(f"🪙 Filtered stablecoin: {symbol} (${price})")
                     continue
             
-            # Filter dead tokens: 0 transactions in last hour AND low 24h volume
-            if txns_1h == 0 and volume_24h < 100:
-                dead_filtered += 1
-                logger.debug(f"💀 Filtered dead token: {symbol} (0 txns/h, ${volume_24h} vol24h)")
+            # Filter suspicious price_change (garbage data from DEX Screener)
+            if abs(price_change_24h) > 1000:
+                sus_price_filtered += 1
+                logger.debug(f"🚩 Filtered suspicious price_change: {symbol} ({price_change_24h}%)")
                 continue
             
-            # Filter low-activity tokens: very few transactions
-            if txns_1h < MIN_HOURLY_TXNS and buys_24h + sells_24h < 20:
+            # Filter dead tokens: very low 24h activity (catches Solana tokens with 0 txns/h)
+            if txns_24h < 10:
+                dead_filtered += 1
+                logger.debug(f"💀 Filtered dead token: {symbol} ({txns_24h} txns/24h)")
+                continue
+            
+            # Filter low-activity tokens: very few transactions per hour
+            if txns_1h < MIN_HOURLY_TXNS and buys_24h + sells_24h < 30:
                 low_activity_filtered += 1
-                logger.debug(f"😴 Filtered low-activity token: {symbol} ({txns_1h} txns/h)")
+                logger.debug(f"😴 Filtered low-activity token: {symbol} ({txns_1h} txns/h, {buys_24h+sells_24h} total/24h)")
                 continue
             
             filtered.append(token)
         
-        total_filtered = stablecoins_filtered + dead_filtered + low_activity_filtered
+        total_filtered = stablecoins_filtered + dead_filtered + low_activity_filtered + sus_price_filtered
         if total_filtered > 0:
             logger.info(
                 f"🧹 Data quality filter: removed {total_filtered}/{len(market_data)} tokens "
-                f"(stablecoins={stablecoins_filtered}, dead={dead_filtered}, low_activity={low_activity_filtered})"
+                f"(stablecoins={stablecoins_filtered}, dead={dead_filtered}, low_activity={low_activity_filtered}, sus_price={sus_price_filtered})"
+            )
+        
+        return filtered
+
+    def filter_quality_dips(self, market_data: List[Dict]) -> List[Dict]:
+        """
+        Filter tokens for dip-buying strategy: only keep tokens that show clear reversal patterns.
+        Conditions: price dropped 3-15% in 24h, buying pressure > selling, alive token.
+        """
+        filtered = []
+        pumped_out = 0
+        no_dip = 0
+        selling_pressure = 0
+        
+        for token in market_data:
+            symbol = token.get('symbol', '')
+            price_change_24h = token.get('price_change_24h', 0)
+            buys_1h = token.get('buys_1h', 0)
+            sells_1h = token.get('sells_1h', 0)
+            buys_24h = token.get('buys_24h', 0)
+            sells_24h = token.get('sells_24h', 0)
+            
+            # Skip pumped tokens (>0% in 24h — we buy dips, not highs)
+            if price_change_24h > 0:
+                pumped_out += 1
+                logger.debug(f"📈 Skipped pumped token: {symbol} (+{price_change_24h}% 24h)")
+                continue
+            
+            # Skip tokens that didn't dip enough or crashed too hard
+            if price_change_24h > -3:
+                no_dip += 1
+                logger.debug(f"➡️ Skipped flat token: {symbol} ({price_change_24h}% 24h)")
+                continue
+            
+            if price_change_24h < -25:
+                no_dip += 1
+                logger.debug(f"📉 Skipped crashed token: {symbol} ({price_change_24h}% 24h)")
+                continue
+            
+            # Check buying pressure: 1h window is best for timing
+            if buys_1h > 0 and sells_1h > 0 and buys_1h <= sells_1h:
+                selling_pressure += 1
+                logger.debug(f"📊 Skipped selling pressure: {symbol} (buys={buys_1h} sells={sells_1h} 1h)")
+                continue
+            
+            # Also check 24h window as fallback
+            if buys_1h == 0 and sells_1h == 0 and buys_24h > 0 and buys_24h <= sells_24h:
+                selling_pressure += 1
+                logger.debug(f"📊 Skipped 24h selling pressure: {symbol}")
+                continue
+            
+            filtered.append(token)
+        
+        total_filtered = pumped_out + no_dip + selling_pressure
+        if total_filtered > 0:
+            logger.info(
+                f"🎯 Quality dip filter: kept {len(filtered)}/{len(market_data)} tokens "
+                f"(pumped={pumped_out}, no_dip={no_dip}, selling={selling_pressure})"
             )
         
         return filtered

@@ -16,8 +16,8 @@
     "stablecoin_max_price": 10
   },
   "trading": {
-    "enable_auto_trading": false,
-    "trade_amount_usdt": 10,
+    "enable_auto_trading": true,
+    "trade_amount_usdt": 2,
     "min_take_profit_percent": 1,
     "token_min_trades_for_block": 2,
     "token_loss_lookback_days": 30,
@@ -46,7 +46,8 @@
       "TFPUSDT",
       "WHBARUSDT",
       "SPYUSDTUSDT",
-      "TITNUSDT"
+      "TITNUSDT",
+      "METAUSDT"
     ]
   }
 }

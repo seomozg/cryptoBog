@@ -120,8 +120,11 @@ def analyze_data_task(collected_data: dict):
         # Filter dead tokens (stablecoins, no activity, low liquidity)
         filtered_market_data = signal_generator.filter_dead_tokens(filtered_market_data)
         
+        # Filter for quality dips only (price dropped 3-25%, buys > sells)
+        filtered_market_data = signal_generator.filter_quality_dips(filtered_market_data)
+        
         if not filtered_market_data:
-            logger.info("Все токены отфильтрованы (блокировка/мёртвые/стейблкоины), анализ DeepSeek не выполняется")
+            logger.info("Все токены отфильтрованы (блокировка/мёртвые/стейблкоины/нет дипов), анализ DeepSeek не выполняется")
             return {
                 'market_phase': 'unknown',
                 'signals': []

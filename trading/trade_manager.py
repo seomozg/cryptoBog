@@ -4,6 +4,7 @@ Trade manager for automated trading operations
 """
 
 import logging
+import time
 from typing import Dict, List, Optional
 from datetime import datetime
 from database.db_manager import db_manager
@@ -292,15 +293,20 @@ class TradeManager:
             symbol = position.symbol.replace('USDT', '')  # Remove USDT suffix
             current_price = current_prices.get(symbol)
 
-            # If price not found in DEX data, try to get from MEXC API
+            # If price not found in DEX data, try to get from MEXC API with retries
             if not current_price:
                 logger.info(f"📊 Price for {symbol} not in DEX data, fetching from MEXC...")
-                current_price = self.mexc_client.get_symbol_price(position.symbol)
-                if current_price:
-                    logger.info(f"💰 MEXC price for {position.symbol}: ${current_price:.4f}")
-                else:
-                    logger.warning(f"⚠️ Could not get price for {position.symbol} from any source")
-                    return False
+                for retry in range(3):
+                    time.sleep(retry * 2)  # Exponential backoff: 0s, 2s, 4s
+                    current_price = self.mexc_client.get_symbol_price(position.symbol)
+                    if current_price:
+                        logger.info(f"💰 MEXC price for {position.symbol}: ${current_price:.4f} (retry {retry+1})")
+                        break
+                
+                if not current_price:
+                    logger.warning(f"⚠️ Could not get price for {position.symbol} after 3 retries — forcing close to prevent unlimited losses")
+                    # Force close: we can't monitor this position, better to exit blindly than hold forever
+                    return True
 
             entry_price = position.entry_price
             original_stop_loss = position.stop_loss

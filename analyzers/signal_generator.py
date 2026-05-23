@@ -168,6 +168,63 @@ class SignalGenerator:
         
         return filtered
 
+    def filter_momentum(self, market_data: List[Dict]) -> List[Dict]:
+        """
+        NEW STRATEGY: Momentum + Trend Following.
+        Keep only tokens that are ALREADY rising with strong buying pressure.
+        Conditions: price up 2-8% in 1h, buys > sells × 2, alive token.
+        """
+        filtered = []
+        no_momentum = 0
+        overheated = 0
+        weak_pressure = 0
+        
+        for token in market_data:
+            symbol = token.get('symbol', '')
+            price_change_1h = token.get('price_change_1h', 0)
+            price_change_24h = token.get('price_change_24h', 0)
+            buys_1h = token.get('buys_1h', 0)
+            sells_1h = token.get('sells_1h', 0)
+            
+            # Momentum: price up 2-8% in last hour
+            if price_change_1h < 2:
+                no_momentum += 1
+                logger.debug(f"📉 No momentum: {symbol} ({price_change_1h}% 1h)")
+                continue
+            
+            if price_change_1h > 12:
+                overheated += 1
+                logger.debug(f"🔥 Overheated: {symbol} (+{price_change_1h}% 1h)")
+                continue
+            
+            # Avoid pump-and-dump: 24h change should be moderate
+            if price_change_24h > 25:
+                overheated += 1
+                logger.debug(f"🚀 Likely pump: {symbol} (+{price_change_24h}% 24h)")
+                continue
+            
+            # Strong buying pressure
+            if buys_1h < 10:
+                weak_pressure += 1
+                logger.debug(f"📊 Low activity: {symbol} ({buys_1h} buys/h)")
+                continue
+            
+            if sells_1h > 0 and buys_1h <= sells_1h * 1.5:
+                weak_pressure += 1
+                logger.debug(f"⚖️ Weak buy pressure: {symbol} (b={buys_1h} s={sells_1h})")
+                continue
+            
+            filtered.append(token)
+        
+        total_filtered = no_momentum + overheated + weak_pressure
+        if total_filtered > 0:
+            logger.info(
+                f"🚀 Momentum filter: kept {len(filtered)}/{len(market_data)} tokens "
+                f"(no_momentum={no_momentum}, overheated={overheated}, weak={weak_pressure})"
+            )
+        
+        return filtered
+
     def normalize_signal_parameters(self, signal: Dict) -> Dict:
         """
         Smart normalization: respect DeepSeek's TP/SL when reasonable, 
